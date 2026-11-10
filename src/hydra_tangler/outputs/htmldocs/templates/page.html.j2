@@ -1,0 +1,15 @@
+{% extends "base.html.j2" %}
+{% import "macros.html.j2" as macros %}
+{% block body %}
+<article>
+{% for part in parts %}
+{% if part.kind == "prose" %}
+{{ part.html }}
+{% else %}
+{{ macros.code_block(
+    part.anchor, part.output_path, part.language, part.html
+) }}
+{% endif %}
+{% endfor %}
+</article>
+{% endblock %}

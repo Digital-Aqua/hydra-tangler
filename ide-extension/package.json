@@ -1,0 +1,82 @@
+{
+  "name": "hydra-tangler",
+  "displayName": "Hydra Tangler",
+  "description": "Language client for the Hydra Tangler language server.",
+  "version": "0.1.0",
+  "publisher": "digital-aqua",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "activationEvents": [
+    "onLanguage:markdown",
+    "workspaceContains:**/pyproject.toml"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "hydra.rebuild",
+        "title": "Hydra: Rebuild"
+      },
+      {
+        "command": "hydra.restart",
+        "title": "Hydra: Restart Server"
+      }
+    ],
+    "configuration": {
+      "title": "Hydra Tangler",
+      "properties": {
+        "hydra.serverCommand": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Command and arguments that start the language server. Empty uses uv run --project <workspace> hydra serve."
+        },
+        "hydra.write": {
+          "type": "boolean",
+          "default": false,
+          "description": "When true, saving a Markdown file tangles outputs into the build directory."
+        },
+        "hydra.pyrightCommand": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Command and arguments for the basedpyright language server. Empty uses the server default."
+        },
+        "hydra.trace.server": {
+          "scope": "window",
+          "type": "string",
+          "enum": [
+            "off",
+            "messages",
+            "verbose"
+          ],
+          "default": "off",
+          "description": "Traces communication between the extension and the Hydra language server."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "tsc --noEmit -p . && esbuild src/extension.ts --bundle --outfile=out/extension.js --external:vscode --format=cjs --platform=node --sourcemap",
+    "test": "tsc -p tsconfig.test.json && node --test out/*.test.js",
+    "package": "vsce package --no-dependencies"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/vscode": "^1.90.0",
+    "@vscode/vsce": "^3.6.0",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.6.3"
+  }
+}

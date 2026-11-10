@@ -1,0 +1,59 @@
+[project]
+name = "hydra-tangler"
+version = "0.1.0"
+description = "Literate programming in Markdown."
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "jinja2>=3.1",
+    "lsprotocol>=2025.0.0",
+    "markdown-it-py>=3.0",
+    "mdit-py-plugins>=0.4",
+    "pygls>=2.0",
+    "pygments>=2.18",
+    "typer>=0.15",
+    "watchfiles>=1.0",
+]
+
+[project.scripts]
+hydra = "hydra_tangler.main:app"
+
+[project.entry-points."hydra_tangler.fences"]
+pytest = "hydra_tangler.fences.pytest:handler"
+python = "hydra_tangler.fences.python:handler"
+
+[project.entry-points."hydra_tangler.outputs"]
+htmldocs = "hydra_tangler.outputs.htmldocs:output"
+python = "hydra_tangler.outputs.python:output"
+
+[build-system]
+requires = ["uv_build>=0.11.25,<0.12.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "basedpyright>=1.30",
+    "nodejs-wheel>=22,<23",
+    "pytest>=9.0",
+    "ruff>=0.12",
+    "syrupy>=4.9",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = ["--import-mode=importlib"]
+
+[tool.basedpyright]
+typeCheckingMode = "recommended"
+include = ["src", "tests"]
+reportExplicitAny = false
+
+[tool.ruff]
+line-length = 80
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM", "C90"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 8

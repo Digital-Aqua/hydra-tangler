@@ -1,0 +1,23 @@
+{% macro code_block(anchor, output_path, language, code_html) -%}
+<div class="code-block"{% if anchor %} id="{{ anchor }}"{% endif %}>
+{% if output_path -%}
+<p class="fence-file"><code>{{ output_path }}</code></p>
+{% endif -%}
+<pre><code class="highlight{% if language %} language-{{ language }}{% endif %}">{{ code_html }}</code></pre>
+</div>
+{%- endmacro %}
+
+{% macro tree(items) -%}
+<ol class="tree">
+{% for item in items %}
+  <li>
+    {% if item.href -%}
+    <a href="{{ item.href }}"{% if item.current %} aria-current="page"{% endif %}>{{ item.title }}</a>
+    {% else -%}
+    <span class="folder">{{ item.title }}</span>
+    {% endif -%}
+    {% if item.children %}{{ tree(item.children) }}{% endif %}
+  </li>
+{% endfor %}
+</ol>
+{%- endmacro %}

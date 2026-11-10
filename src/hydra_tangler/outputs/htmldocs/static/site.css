@@ -1,0 +1,241 @@
+/* Docs site. Warm paper, one accent, no app chrome. */
+
+:root {
+  color-scheme: light dark;
+  --bg: #f3f1eb;
+  --paper: #fbfaf6;
+  --ink: #1c1b19;
+  --muted: #5f5c56;
+  --rule: #e4e0d6;
+  --accent: #3c3f8f;
+  --accent-soft: #ececf4;
+  --nav: #f7f6f1;
+  --serif: "Source Serif 4", Palatino, "Palatino Linotype", Georgia, serif;
+  --sans: "Source Sans 3", system-ui, sans-serif;
+  --mono: "Source Code Pro", ui-monospace, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #141413;
+    --paper: #1c1b19;
+    --ink: #eceae4;
+    --muted: #a8a296;
+    --rule: #2f2e2a;
+    --accent: #c5c6f2;
+    --accent-soft: #2a2a3d;
+    --nav: #191816;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 1.05rem/1.65 var(--serif);
+}
+
+.skip {
+  position: absolute;
+  left: 0.75rem;
+  top: 0.75rem;
+  transform: translateY(-150%);
+  background: var(--paper);
+  color: var(--accent);
+  padding: 0.3rem 0.6rem;
+  border: 1px solid var(--rule);
+}
+
+.skip:focus { transform: none; }
+
+.layout {
+  display: grid;
+  grid-template-columns: 18rem minmax(0, 1fr);
+  min-height: 100vh;
+}
+
+.nav {
+  position: sticky;
+  top: 0;
+  align-self: start;
+  height: 100vh;
+  overflow: auto;
+  padding: 1.25rem 1rem 2.5rem;
+  background: var(--nav);
+  border-right: 1px solid var(--rule);
+  font-family: var(--sans);
+  font-size: 0.84rem;
+  line-height: 1.35;
+}
+
+.brand {
+  margin: 0 0 1rem;
+  font-family: var(--serif);
+  font-size: 1.2rem;
+  font-weight: 600;
+}
+
+.brand a { color: var(--ink); text-decoration: none; }
+
+.files-link { margin: 1.2rem 0 0; }
+
+.files-link a {
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.files-link a[aria-current="page"] {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.tree, .tree ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.tree ol { padding-left: 0.7rem; }
+
+.tree li { margin: 0.12rem 0; }
+
+.tree a, .folder {
+  color: var(--ink);
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+
+.folder { font-weight: 600; }
+
+.tree a:hover { color: var(--accent); }
+
+.tree a[aria-current="page"] {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+main {
+  min-width: 0;
+  padding: 2.4rem 2rem 4rem;
+  background: var(--paper);
+}
+
+article { max-width: 40rem; }
+
+h1, h2, h3, h4 {
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: -0.015em;
+}
+
+h1 { font-size: 2rem; margin: 0 0 0.6rem; }
+
+h2 { font-size: 1.35rem; margin: 2rem 0 0.5rem; }
+
+h3 { font-size: 1.1rem; margin: 1.4rem 0 0.4rem; }
+
+a { color: var(--accent); }
+
+p, ul, ol, blockquote, table, pre { margin: 0.8rem 0; }
+
+ul, ol { padding-left: 1.3rem; }
+
+li > p { margin: 0.2rem 0; }
+
+blockquote {
+  margin-left: 0;
+  padding-left: 0.9rem;
+  border-left: 2px solid var(--accent);
+  color: var(--ink);
+}
+
+code, pre { font-family: var(--mono); }
+
+p code, li code, td code, h1 code, h2 code, h3 code {
+  font-size: 0.88em;
+  background: var(--accent-soft);
+  padding: 0.05em 0.3em;
+  border-radius: 3px;
+}
+
+pre {
+  margin: 0.8rem 0 1rem;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  overflow: auto;
+  background: #fbfaf6;
+  color: #1c1b19;
+}
+
+pre code {
+  display: block;
+  padding: 0.85rem 1rem;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  background: transparent;
+}
+
+.code-block { margin: 1rem 0; }
+
+.fence-file {
+  margin: 0 0 0.25rem;
+  font-family: var(--sans);
+  font-size: 0.84rem;
+  color: var(--muted);
+}
+
+.fence-file + pre { margin-top: 0; }
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.95rem;
+}
+
+th, td {
+  text-align: left;
+  vertical-align: top;
+  padding: 0.35rem 0.6rem 0.35rem 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+th {
+  font-family: var(--sans);
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.pager {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 3rem;
+  max-width: 40rem;
+  font-family: var(--sans);
+  font-size: 0.84rem;
+}
+
+.pager a { text-decoration: none; }
+
+.pager .next { margin-left: auto; }
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@media (max-width: 52rem) {
+  .layout { display: block; }
+
+  .nav {
+    position: static;
+    height: auto;
+    border-right: 0;
+    border-bottom: 1px solid var(--rule);
+  }
+
+  main { padding: 1.5rem 1.1rem 3rem; }
+}

@@ -1,0 +1,15 @@
+{% extends "base.html.j2" %}
+{% block body %}
+<article>
+  <h1>{{ shell.title }}</h1>
+  {% if entries %}
+  <ol class="contents">
+    {% for entry in entries %}
+    <li><a href="{{ entry.href }}">{{ entry.title }}</a></li>
+    {% endfor %}
+  </ol>
+  {% else %}
+  <p>This book has no documents.</p>
+  {% endif %}
+</article>
+{% endblock %}

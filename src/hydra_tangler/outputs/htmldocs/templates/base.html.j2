@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ shell.title }}</title>
+  <link rel="stylesheet" href="{{ shell.pygments_css }}">
+  <link rel="stylesheet" href="{{ shell.site_css }}">
+</head>
+<body>
+  <a class="skip" href="#content">Skip to content</a>
+  <div class="layout">
+    {% include "nav.html.j2" %}
+
+    <main id="content">
+      {% block body %}{% endblock %}
+      {% if shell.previous or shell.next_page %}
+      <footer class="pager">
+        {% if shell.previous %}
+        <a class="previous" href="{{ shell.previous.href }}">{{ shell.previous.title }}</a>
+        {% endif %}
+        {% if shell.next_page %}
+        <a class="next" href="{{ shell.next_page.href }}">{{ shell.next_page.title }}</a>
+        {% endif %}
+      </footer>
+      {% endif %}
+    </main>
+  </div>
+</body>
+</html>

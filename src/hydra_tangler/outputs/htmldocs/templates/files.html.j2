@@ -1,0 +1,20 @@
+{% extends "base.html.j2" %}
+{% block body %}
+<article>
+  <h1>{{ shell.title }}</h1>
+  {% if groups %}
+  {% for group in groups %}
+  <section class="file-group">
+    <h2><code>{{ group.path }}</code></h2>
+    <ul>
+      {% for source in group.sources %}
+      <li><a href="{{ source.href }}">{{ source.title }}</a></li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endfor %}
+  {% else %}
+  <p>No fences name an output file.</p>
+  {% endif %}
+</article>
+{% endblock %}

@@ -1,0 +1,10 @@
+{% import "macros.html.j2" as macros %}
+<nav class="nav" aria-label="Documents">
+  <p class="brand">
+    <a href="{{ shell.home_href }}"{% if shell.on_home %} aria-current="page"{% endif %}>Docs</a>
+  </p>
+  {{ macros.tree(shell.navigation) }}
+  <p class="files-link">
+    <a href="{{ shell.files_link.href }}"{% if shell.files_link.current %} aria-current="page"{% endif %}>Files</a>
+  </p>
+</nav>

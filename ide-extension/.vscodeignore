@@ -1,0 +1,11 @@
+src/**
+tsconfig.json
+tsconfig.test.json
+**/*.map
+**/*.test.js
+**/*.ts
+node_modules/**
+.gitignore
+package-lock.json
+out/**
+!out/extension.js

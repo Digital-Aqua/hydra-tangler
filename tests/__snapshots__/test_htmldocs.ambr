@@ -1,0 +1,320 @@
+# serializer version: 1
+# name: test_site_pages
+  dict({
+    'alpha/intro.html': '''
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>Intro</title>
+        <link rel="stylesheet" href="../_assets/pygments.css">
+        <link rel="stylesheet" href="../_assets/site.css">
+      </head>
+      <body>
+        <a class="skip" href="#content">Skip to content</a>
+        <div class="layout">
+      <nav class="nav" aria-label="Documents">
+        <p class="brand">
+          <a href="../index.html">Docs</a>
+        </p>
+        <ol class="tree">
+        <li>
+      <span class="folder">alpha</span>
+      <ol class="tree">
+        <li>
+      <a href="intro.html" aria-current="page">Intro</a>
+        </li>
+      </ol>  </li>
+        <li>
+      <span class="folder">notes</span>
+      <ol class="tree">
+        <li>
+      <a href="../notes/second.html">What&#39;s up?</a>
+        </li>
+        <li>
+      <a href="../notes/third.html">Third</a>
+        </li>
+      </ol>  </li>
+      </ol>
+        <p class="files-link">
+          <a href="../files.html">Files</a>
+        </p>
+      </nav>
+          <main id="content">
+      <article>
+      <h1 id="intro">Intro</h1>
+      <p>A table.</p>
+      <table>
+      <thead>
+      <tr>
+      <th>Col</th>
+      <th>Val</th>
+      </tr>
+      </thead>
+      <tbody>
+      <tr>
+      <td>a</td>
+      <td>b</td>
+      </tr>
+      </tbody>
+      </table>
+      
+      <div class="code-block" id="fence-alpha-intro-md-line-9">
+      <p class="fence-file"><code>src/app.py</code></p>
+      <pre><code class="highlight language-python"><span class="nb">print</span><span class="p">(</span><span class="s2">"hi"</span><span class="p">)</span>
+      </code></pre>
+      </div>
+      <div class="code-block" id="fence-alpha-intro-md-line-13">
+      <p class="fence-file"><code>src/app.py</code></p>
+      <pre><code class="highlight language-python"><span class="nb">print</span><span class="p">(</span><span class="s2">"again"</span><span class="p">)</span>
+      </code></pre>
+      </div>
+      <div class="code-block" id="fence-alpha-intro-md-line-17">
+      <p class="fence-file"><code>src/raw.txt</code></p>
+      <pre><code class="highlight language-notalang">@@@
+      </code></pre>
+      </div>
+      <div class="code-block">
+      <pre><code class="highlight language-python"><span class="nb">print</span><span class="p">(</span><span class="s2">"loose"</span><span class="p">)</span>
+      </code></pre>
+      </div>
+      </article>
+            <footer class="pager">
+              <a class="next" href="../notes/second.html">What&#39;s up?</a>
+            </footer>
+          </main>
+        </div>
+      </body>
+      </html>
+    ''',
+    'files.html': '''
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>Files</title>
+        <link rel="stylesheet" href="_assets/pygments.css">
+        <link rel="stylesheet" href="_assets/site.css">
+      </head>
+      <body>
+        <a class="skip" href="#content">Skip to content</a>
+        <div class="layout">
+      <nav class="nav" aria-label="Documents">
+        <p class="brand">
+          <a href="index.html">Docs</a>
+        </p>
+        <ol class="tree">
+        <li>
+      <span class="folder">alpha</span>
+      <ol class="tree">
+        <li>
+      <a href="alpha/intro.html">Intro</a>
+        </li>
+      </ol>  </li>
+        <li>
+      <span class="folder">notes</span>
+      <ol class="tree">
+        <li>
+      <a href="notes/second.html">What&#39;s up?</a>
+        </li>
+        <li>
+      <a href="notes/third.html">Third</a>
+        </li>
+      </ol>  </li>
+      </ol>
+        <p class="files-link">
+          <a href="files.html" aria-current="page">Files</a>
+        </p>
+      </nav>
+          <main id="content">
+      <article>
+        <h1>Files</h1>
+        <section class="file-group">
+          <h2><code>src/app.py</code></h2>
+          <ul>
+            <li><a href="alpha/intro.html#fence-alpha-intro-md-line-9">alpha/intro.md:9</a></li>
+            <li><a href="alpha/intro.html#fence-alpha-intro-md-line-13">alpha/intro.md:13</a></li>
+          </ul>
+        </section>
+        <section class="file-group">
+          <h2><code>src/raw.txt</code></h2>
+          <ul>
+            <li><a href="alpha/intro.html#fence-alpha-intro-md-line-17">alpha/intro.md:17</a></li>
+          </ul>
+        </section>
+      </article>
+          </main>
+        </div>
+      </body>
+      </html>
+    ''',
+    'index.html': '''
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>Contents</title>
+        <link rel="stylesheet" href="_assets/pygments.css">
+        <link rel="stylesheet" href="_assets/site.css">
+      </head>
+      <body>
+        <a class="skip" href="#content">Skip to content</a>
+        <div class="layout">
+      <nav class="nav" aria-label="Documents">
+        <p class="brand">
+          <a href="index.html" aria-current="page">Docs</a>
+        </p>
+        <ol class="tree">
+        <li>
+      <span class="folder">alpha</span>
+      <ol class="tree">
+        <li>
+      <a href="alpha/intro.html">Intro</a>
+        </li>
+      </ol>  </li>
+        <li>
+      <span class="folder">notes</span>
+      <ol class="tree">
+        <li>
+      <a href="notes/second.html">What&#39;s up?</a>
+        </li>
+        <li>
+      <a href="notes/third.html">Third</a>
+        </li>
+      </ol>  </li>
+      </ol>
+        <p class="files-link">
+          <a href="files.html">Files</a>
+        </p>
+      </nav>
+          <main id="content">
+      <article>
+        <h1>Contents</h1>
+        <ol class="contents">
+          <li><a href="alpha/intro.html">Intro</a></li>
+          <li><a href="notes/second.html">What&#39;s up?</a></li>
+          <li><a href="notes/third.html">Third</a></li>
+        </ol>
+      </article>
+          </main>
+        </div>
+      </body>
+      </html>
+    ''',
+    'notes/second.html': '''
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>What&#39;s up?</title>
+        <link rel="stylesheet" href="../_assets/pygments.css">
+        <link rel="stylesheet" href="../_assets/site.css">
+      </head>
+      <body>
+        <a class="skip" href="#content">Skip to content</a>
+        <div class="layout">
+      <nav class="nav" aria-label="Documents">
+        <p class="brand">
+          <a href="../index.html">Docs</a>
+        </p>
+        <ol class="tree">
+        <li>
+      <span class="folder">alpha</span>
+      <ol class="tree">
+        <li>
+      <a href="../alpha/intro.html">Intro</a>
+        </li>
+      </ol>  </li>
+        <li>
+      <span class="folder">notes</span>
+      <ol class="tree">
+        <li>
+      <a href="second.html" aria-current="page">What&#39;s up?</a>
+        </li>
+        <li>
+      <a href="third.html">Third</a>
+        </li>
+      </ol>  </li>
+      </ol>
+        <p class="files-link">
+          <a href="../files.html">Files</a>
+        </p>
+      </nav>
+          <main id="content">
+      <article>
+      <h1 id="whats-up">What's up?</h1>
+      <h2 id="whats-up-1">What's up?</h2>
+      <p>A <a href="picture.png">picture</a>, a <a href="missing.html">missing</a>,
+      and a <a href="https://example.com/docs" rel="noopener">web</a>.</p>
+      <p>Back to <a href="../alpha/intro.html#intro">intro</a>.</p>
+      
+      </article>
+            <footer class="pager">
+              <a class="previous" href="../alpha/intro.html">Intro</a>
+              <a class="next" href="third.html">Third</a>
+            </footer>
+          </main>
+        </div>
+      </body>
+      </html>
+    ''',
+    'notes/third.html': '''
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>Third</title>
+        <link rel="stylesheet" href="../_assets/pygments.css">
+        <link rel="stylesheet" href="../_assets/site.css">
+      </head>
+      <body>
+        <a class="skip" href="#content">Skip to content</a>
+        <div class="layout">
+      <nav class="nav" aria-label="Documents">
+        <p class="brand">
+          <a href="../index.html">Docs</a>
+        </p>
+        <ol class="tree">
+        <li>
+      <span class="folder">alpha</span>
+      <ol class="tree">
+        <li>
+      <a href="../alpha/intro.html">Intro</a>
+        </li>
+      </ol>  </li>
+        <li>
+      <span class="folder">notes</span>
+      <ol class="tree">
+        <li>
+      <a href="second.html">What&#39;s up?</a>
+        </li>
+        <li>
+      <a href="third.html" aria-current="page">Third</a>
+        </li>
+      </ol>  </li>
+      </ol>
+        <p class="files-link">
+          <a href="../files.html">Files</a>
+        </p>
+      </nav>
+          <main id="content">
+      <article>
+      <h1 id="third">Third</h1>
+      <p>Last page.</p>
+      
+      </article>
+            <footer class="pager">
+              <a class="previous" href="second.html">What&#39;s up?</a>
+            </footer>
+          </main>
+        </div>
+      </body>
+      </html>
+    ''',
+  })
+# ---

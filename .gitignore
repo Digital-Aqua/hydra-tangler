@@ -1,0 +1,7 @@
+__pycache__/
+.venv/
+_build/
+node_modules/
+out/
+.pytest_cache/
+.ruff_cache/
