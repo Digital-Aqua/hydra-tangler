@@ -6,6 +6,7 @@ encloses a shorter one. Line numbers come from ``token.map`` and are
 """
 
 import re
+import shlex
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -57,39 +58,65 @@ def _fences(
     for token in tokens:
         if token.type != "fence":
             continue
-        found.append(_fence(token, path))
         problem = _unclosed(token, text, path)
         if problem is not None:
             problems.append(problem)
+        info = _read_info(token.info)
+        if info.error is not None:
+            problems.append(_bad_attrs(path, token, info.error))
+            continue
+        found.append(_fence(token, path, info))
     return tuple(found), tuple(problems)
 
 
-def _fence(token: Token, path: Path) -> Fence:
-    language, attrs = _language_and_attrs(token.info)
+@dataclass(frozen=True)
+class _Info:
+    """ The language tag and attributes of one info string. """
+
+    language: str
+    attrs: Mapping[str, str]
+    error: str | None = None
+
+
+def _fence(token: Token, path: Path, info: _Info) -> Fence:
     open_line = _line(token)
     body = tuple(token.content.splitlines())
     return Fence(
         path,
         token.info,
-        language,
-        attrs,
+        info.language,
+        info.attrs,
         body,
         open_line,
         open_line + 1,
     )
 
 
-def _language_and_attrs(info: str) -> tuple[str, Mapping[str, str]]:
+def _read_info(info: str) -> _Info:
+    try:
+        parts = shlex.split(info)
+    except ValueError as err:
+        return _Info("", MappingProxyType({}), str(err))
     language = ""
     pairs: dict[str, str] = {}
-    for index, part in enumerate(info.split()):
+    for index, part in enumerate(parts):
         if "=" in part:
             key, _, value = part.partition("=")
             pairs[key] = value
             continue
         if index == 0:
             language = part
-    return language, MappingProxyType(pairs)
+    return _Info(language, MappingProxyType(pairs))
+
+
+def _bad_attrs(path: Path, token: Token, detail: str) -> Diagnostic:
+    return Diagnostic(
+        path,
+        _line(token),
+        "warning",
+        "bad-fence-attrs",
+        f"bad fence attributes: {detail}",
+    )
 
 
 def _unclosed(token: Token, text: str, path: Path) -> Diagnostic | None:

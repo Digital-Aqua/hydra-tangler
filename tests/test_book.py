@@ -4,7 +4,7 @@ from pathlib import Path
 
 from tests.books import write_chapter
 
-from hydra_tangler.book import default_source, load_book
+from hydra_tangler.book import load_book
 
 
 def test_documents_are_alphabetical_by_relative_path(tmp_path: Path) -> None:
@@ -24,9 +24,22 @@ def test_documents_are_alphabetical_by_relative_path(tmp_path: Path) -> None:
     ]
 
 
-def test_default_source_prefers_src_then_source(tmp_path: Path) -> None:
-    assert default_source(tmp_path) == tmp_path
-    (tmp_path / "source").mkdir()
-    assert default_source(tmp_path) == tmp_path / "source"
-    (tmp_path / "src").mkdir()
-    assert default_source(tmp_path) == tmp_path / "src"
+def test_discovery_skips_tool_directories_and_a_nested_target(
+    tmp_path: Path,
+) -> None:
+    write_chapter(tmp_path, "keep.md", "# k\n")
+    write_chapter(tmp_path, "src/also.md", "# s\n")
+    write_chapter(tmp_path, "source/too.md", "# o\n")
+    write_chapter(tmp_path, "_build/out.md", "# b\n")
+    write_chapter(tmp_path, "node_modules/pkg.md", "# n\n")
+    write_chapter(tmp_path, "__pycache__/c.md", "# p\n")
+    write_chapter(tmp_path, ".hidden/h.md", "# h\n")
+    write_chapter(tmp_path, "nested/stay.md", "# y\n")
+    write_chapter(tmp_path, "nested/out/skip.md", "# x\n")
+    book = load_book(tmp_path, target=tmp_path / "nested" / "out")
+    assert [item.path.as_posix() for item in book.documents] == [
+        "keep.md",
+        "nested/stay.md",
+        "source/too.md",
+        "src/also.md",
+    ]

@@ -14,7 +14,7 @@ from pygls.uris import to_fs_path
 from pygls.workspace import Workspace
 
 from hydra_tangler.check.lint import Runner
-from hydra_tangler.config import ConfigError, load_config
+from hydra_tangler.check.tool import CheckerCommands
 from hydra_tangler.pipeline import source_directory
 from hydra_tangler.serve.analysis import Analysis, analyse
 from hydra_tangler.serve.documents import DocumentStore
@@ -43,20 +43,26 @@ class Session:
         self._source: Path | None = None
         self._status = StatusReport("idle", 0, 0)
         self._loop: asyncio.AbstractEventLoop | None = None
-        self._navigation = Navigation(self._report)
-        self._scheduler = RebuildScheduler(self._perform, self._notify)
+        self._navigation = Navigation(self._report, self._alert)
+        self._scheduler = RebuildScheduler(
+            self._perform,
+            self._notify,
+            self._alert,
+        )
 
     def configure(self, options: object) -> None:
         """ Store the workspace root and initialization options. """
         self._options = read_options(options)
         self._loop = asyncio.get_running_loop()
         self._scheduler.start()
+        for message in self._options.rejected:
+            self._alert(message)
         root = _project_root(self._server.workspace)
         if root is None:
-            self._log("hydra serve needs a workspace root")
+            self._alert("hydra serve needs a workspace root")
             return
         self._root = root
-        self._navigation.bind(root, self._options.pyright)
+        self._navigation.bind(root, self._options.pyright_server)
         self._remember_source(root)
 
     def open_document(self, uri: str, text: str) -> None:
@@ -137,12 +143,7 @@ class Session:
         )
 
     def _remember_source(self, root: Path) -> None:
-        try:
-            config = load_config(root)
-        except ConfigError as err:
-            self._log(str(err))
-            return
-        self._source = source_directory(root, None, config).resolve()
+        self._source = source_directory(root, None).resolve()
 
     async def _perform(self, job: RebuildRequest) -> StatusReport | None:
         root = self._root
@@ -163,17 +164,18 @@ class Session:
             root,
             overlays,
             job.write,
+            CheckerCommands(self._options.pyright, self._options.ruff),
             self._run,
         )
 
     def _apply(self, analysis: Analysis) -> StatusReport:
         if analysis.load_failure:
-            self._log(analysis.load_failure)
+            self._alert(analysis.load_failure)
             return self._status
         if analysis.write_failure:
-            self._log(analysis.write_failure)
+            self._alert(analysis.write_failure)
         if analysis.lint_failure:
-            self._log(analysis.lint_failure)
+            self._alert(analysis.lint_failure)
         report = self._publisher.publish(analysis, self._documents.uris())
         self._navigation.update(analysis.source, analysis.python)
         self._status = report
@@ -187,6 +189,15 @@ class Session:
         if loop is None or loop.is_closed():
             return
         _ = loop.call_soon_threadsafe(self._log, message)
+
+    def _alert(self, message: str) -> None:
+        self._log(message)
+        self._server.window_show_message(
+            types.ShowMessageParams(
+                type=types.MessageType.Error,
+                message=message,
+            )
+        )
 
     def _log(self, message: str) -> None:
         self._server.window_log_message(

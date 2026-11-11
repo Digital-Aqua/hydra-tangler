@@ -11,6 +11,7 @@ from typing import cast
 from hydra_tangler.check.errors import LintError
 from hydra_tangler.check.json_text import json_value
 from hydra_tangler.check.reported import Reported
+from hydra_tangler.check.tool import CheckerCommands
 from hydra_tangler.model import Severity
 
 
@@ -18,6 +19,10 @@ class Ruff:
     """ The ruff checker. """
 
     name: str = "ruff"
+
+    def configured(self, commands: CheckerCommands) -> tuple[str, ...]:
+        """ The ruff argv from the caller, if one was given. """
+        return commands.ruff
 
     def argv(
         self,
@@ -58,7 +63,7 @@ def _keep(items: list[object]) -> tuple[Reported, ...]:
 def _finding(item: object) -> Reported | None:
     record = _as_dict(item)
     if record is None:
-        return None
+        raise LintError("ruff finding was not an object")
     location = _as_dict(record.get("location"))
     code = record.get("code")
     label = "ruff" if not isinstance(code, str) or not code else f"ruff:{code}"

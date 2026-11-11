@@ -3,15 +3,22 @@
 import re
 from pathlib import Path
 
+import pytest
+from markdown_it import MarkdownIt
 from tests.books import fence, write_chapter
 
 from hydra_tangler.book import load_book
-from hydra_tangler.model import Book
+from hydra_tangler.model import Book, Document, Fence, Heading
 from hydra_tangler.outputs.base import Rendered
 from hydra_tangler.outputs.htmldocs import output
 from hydra_tangler.outputs.htmldocs.context import DocPage
+from hydra_tangler.outputs.htmldocs.headings import (
+    HeadingSlugMismatch,
+    assign_heading_ids,
+)
 from hydra_tangler.outputs.htmldocs.links import rewrite_href
 from hydra_tangler.outputs.htmldocs.navigation import navigation_nodes
+from hydra_tangler.outputs.htmldocs.render import FenceMismatch, render_article
 from hydra_tangler.outputs.htmldocs.urls import html_path, relative_url
 from hydra_tangler.parse import parse_document
 
@@ -184,5 +191,43 @@ def _text(rendered: Rendered, relative: str) -> str:
     return data.decode("utf-8")
 
 
+def test_htmldocs_builds_no_source_map(tmp_path: Path) -> None:
+    write_chapter(tmp_path, "ch/a.md", "# Title\n\nHello.\n")
+    rendered = output.render(load_book(tmp_path))
+    assert rendered.source_map.records == ()
+    assert "data-md-line" not in _text(rendered, "ch/a.html")
+
+
+def test_heading_slug_mismatch_names_the_document() -> None:
+    tokens = MarkdownIt("commonmark").parse("# Hello\n")
+    headings = (Heading(Path("notes/a.md"), 1, 1, "nope"),)
+    with pytest.raises(HeadingSlugMismatch, match="notes/a.md") as caught:
+        assign_heading_ids(tokens, headings, Path("notes/a.md"))
+    assert "nope" in str(caught.value)
+    assert "hello" in str(caught.value)
+
+
+def test_fence_count_mismatch_names_the_document() -> None:
+    document = Document(
+        Path("notes/a.md"),
+        (
+            Fence(
+                Path("notes/a.md"),
+                "python",
+                "python",
+                {},
+                (),
+                1,
+                1,
+            ),
+        ),
+        (),
+        (),
+    )
+    with pytest.raises(FenceMismatch, match="expected 1 fences, found 0"):
+        _ = render_article("Hello\n", document, Path("a.html"))
+
+
 def _heading_ids(html: str) -> list[str]:
     return [match.group(2) for match in _HEADING_ID.finditer(html)]
+

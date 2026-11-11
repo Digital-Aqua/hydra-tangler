@@ -33,7 +33,7 @@ async def _newest() -> None:
         seen.append(job.started)
         return StatusReport("idle", job.started, 0)
 
-    scheduler = RebuildScheduler(perform, _ignore)
+    scheduler = RebuildScheduler(perform, _ignore, _ignore_failure)
     scheduler.start()
     waiting = [
         scheduler.request(immediate=True, write=False, wait=True)
@@ -61,7 +61,7 @@ async def _drops_stale() -> None:
         seen.append(job.started)
         return StatusReport("idle", job.started, 0)
 
-    scheduler = RebuildScheduler(perform, _ignore)
+    scheduler = RebuildScheduler(perform, _ignore, _ignore_failure)
     holder.append(scheduler)
     scheduler.start()
     first = scheduler.request(immediate=True, write=False, wait=True)
@@ -83,7 +83,7 @@ async def _save_wins() -> None:
         seen.append(job)
         return StatusReport("idle", 0, 0)
 
-    scheduler = RebuildScheduler(perform, _ignore)
+    scheduler = RebuildScheduler(perform, _ignore, _ignore_failure)
     scheduler.start()
     _ = scheduler.request(immediate=False, write=False, wait=False)
     future = scheduler.request(immediate=True, write=True, wait=True)
@@ -97,3 +97,34 @@ async def _save_wins() -> None:
 
 def _ignore(report: StatusReport) -> None:
     _ = report
+
+
+def _ignore_failure(message: str) -> None:
+    _ = message
+
+
+def test_a_rebuild_failure_does_not_stop_the_loop() -> None:
+    asyncio.run(_survives_oserror())
+
+
+async def _survives_oserror() -> None:
+    seen: list[int] = []
+    errors: list[str] = []
+
+    async def perform(job: RebuildRequest) -> StatusReport | None:
+        seen.append(job.started)
+        if job.started == 1:
+            raise OSError("disk full")
+        return StatusReport("idle", 0, 1)
+
+    scheduler = RebuildScheduler(perform, _ignore, errors.append)
+    scheduler.start()
+    first = scheduler.request(immediate=True, write=False, wait=True)
+    assert first is not None
+    _ = await first
+    second = scheduler.request(immediate=True, write=False, wait=True)
+    assert second is not None
+    assert (await second).warnings == 1
+    await scheduler.stop()
+    assert seen == [1, 2]
+    assert errors == ["disk full"]

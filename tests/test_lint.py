@@ -12,13 +12,13 @@ from hydra_tangler.check.errors import LintError
 from hydra_tangler.check.lint import lint_python, run_checker
 from hydra_tangler.check.pyright import Pyright
 from hydra_tangler.check.ruff import Ruff
-from hydra_tangler.config import CheckSettings
-from hydra_tangler.outputs.python import PythonOutput
+from hydra_tangler.check.tool import CheckerCommands
+from hydra_tangler.outputs.files import FilesOutput
 
 
 def _rendered(root: Path, body: str):
     write_chapter(root, "c.md", fence("python file=m.py", body))
-    return PythonOutput().render(load_book(root))
+    return FilesOutput().render(load_book(root))
 
 
 def test_maps_a_finding_onto_the_markdown_line(tmp_path: Path) -> None:
@@ -44,7 +44,7 @@ def test_maps_a_finding_onto_the_markdown_line(tmp_path: Path) -> None:
     found = lint_python(
         tmp_path,
         rendered,
-        CheckSettings(),
+        CheckerCommands(),
         shadow=shadow,
         checkers=(Pyright(),),
         run=run,
@@ -76,7 +76,7 @@ def test_unmapped_finding_uses_the_first_fence(tmp_path: Path) -> None:
     found = lint_python(
         tmp_path,
         rendered,
-        CheckSettings(),
+        CheckerCommands(),
         shadow=tmp_path / "shadow",
         checkers=(Ruff(),),
         run=run,
@@ -85,6 +85,80 @@ def test_unmapped_finding_uses_the_first_fence(tmp_path: Path) -> None:
     assert found[0].line == 1
     assert found[0].code == "ruff:F401"
     assert found[0].severity == "warning"
+
+
+def test_an_unmapped_finding_stays_on_the_output_path(tmp_path: Path) -> None:
+    rendered = _rendered(tmp_path, "value = 1")
+
+    def run(argv: Sequence[str], cwd: Path) -> str:
+        _ = (argv, cwd)
+        return json.dumps(
+            {
+                "generalDiagnostics": [
+                    {
+                        "file": "",
+                        "severity": "error",
+                        "message": "nowhere",
+                        "range": {"start": {"line": 3}},
+                    },
+                    {
+                        "file": "/tmp/not-in-shadow.py",
+                        "severity": "warning",
+                        "message": "outside",
+                        "range": {"start": {"line": 1}},
+                    },
+                ]
+            }
+        )
+
+    found = lint_python(
+        tmp_path,
+        rendered,
+        CheckerCommands(),
+        shadow=tmp_path / "shadow",
+        checkers=(Pyright(),),
+        run=run,
+    )
+    places = [(item.path.as_posix(), item.line, item.message) for item in found]
+    assert places == [
+        (".", 4, "nowhere"),
+        ("/tmp/not-in-shadow.py", 2, "outside"),
+    ]
+    assert all(
+        item.code == "unmapped-finding" and item.severity == "warning"
+        for item in found
+    )
+
+
+def test_no_python_output_is_silent(tmp_path: Path) -> None:
+    found = lint_python(tmp_path, None, CheckerCommands())
+    assert found == ()
+
+
+def test_information_and_hint_become_warnings() -> None:
+    payload = json.dumps(
+        {
+            "generalDiagnostics": [
+                {"file": "m.py", "severity": "information", "message": "info"},
+                {"file": "m.py", "severity": "hint", "message": "hint"},
+            ]
+        }
+    )
+    found = Pyright().read(payload)
+    assert [item.severity for item in found] == ["warning", "warning"]
+    assert [item.message for item in found] == ["info", "hint"]
+
+
+def test_missing_diagnostics_are_an_error() -> None:
+    with pytest.raises(LintError, match="generalDiagnostics"):
+        _ = Pyright().read(json.dumps({"version": 1}))
+
+
+def test_a_non_object_finding_is_an_error() -> None:
+    with pytest.raises(LintError, match="not an object"):
+        _ = Pyright().read(json.dumps({"generalDiagnostics": ["bad"]}))
+    with pytest.raises(LintError, match="not an object"):
+        _ = Ruff().read(json.dumps([1]))
 
 
 def test_a_missing_checker_is_an_error(tmp_path: Path) -> None:
@@ -96,7 +170,7 @@ def test_a_missing_checker_is_an_error(tmp_path: Path) -> None:
 def test_basedpyright_reports_a_real_error(tmp_path: Path) -> None:
     project = Path(__file__).resolve().parents[1]
     rendered = _rendered(tmp_path, "value: int = 'no'")
-    settings = CheckSettings(
+    settings = CheckerCommands(
         pyright=(
             "uv",
             "run",

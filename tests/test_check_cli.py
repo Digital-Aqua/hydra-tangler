@@ -24,7 +24,7 @@ def test_tangle_prints_dead_links_after_writing(tmp_path: Path) -> None:
     )
     result = runner.invoke(
         app,
-        ["tangle", "--output", "python", str(source), str(target)],
+        ["tangle", "--output", "files", str(source), str(target)],
     )
     assert result.exit_code == 0, result.output
     assert (target / "m.py").is_file()
@@ -49,11 +49,22 @@ def test_check_exits_on_error_severity(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.chdir(tmp_path)
-    write_chapter(tmp_path / "src", "c.md", "```python\nx\n")
+    write_chapter(tmp_path, "c.md", "```python\nx\n")
     result = runner.invoke(app, ["check"])
     assert result.exit_code == 1
     reported = (result.stderr or "") + result.output
     assert "error unclosed-fence" in reported
+
+
+def test_check_rejects_an_unbalanced_command(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    write_chapter(tmp_path, "a.md", "# a\n")
+    result = runner.invoke(app, ["check", "--ruff-command", "'unterminated"])
+    assert result.exit_code == 1
+    reported = (result.stderr or "") + result.output
+    assert "bad command" in reported
 
 
 def test_watch_tangles_then_waits(
@@ -79,7 +90,7 @@ def test_watch_tangles_then_waits(
     monkeypatch.setattr("hydra_tangler.main.watch_markdown", fake)
     result = runner.invoke(
         app,
-        ["watch", "--output", "python", str(source), str(target)],
+        ["watch", "--output", "files", str(source), str(target)],
     )
     assert result.exit_code == 0, result.output
     assert seen["directory"] == source

@@ -5,9 +5,12 @@ Call ``load_outputs`` or ``select_outputs``; importing the package
 does not render a book.
 """
 
+from collections.abc import Sequence
 from importlib.metadata import EntryPoint, entry_points
+from pathlib import Path
 from typing import cast
 
+from hydra_tangler.model import UnsafeOutputPath
 from hydra_tangler.outputs.base import Output
 
 _GROUP = "hydra_tangler.outputs"
@@ -35,29 +38,38 @@ def load_outputs() -> tuple[Output, ...]:
         output = _load(point)
         if not isinstance(output, Output):
             raise OutputLoadError(f"{point.name} is not an output")
+        check_mount(output.mount)
         loaded.append(output)
     return tuple(loaded)
+
+
+def check_mount(mount: Path) -> None:
+    """ Raise ``OutputLoadError`` when ``mount`` leaves the target. """
+    try:
+        # Local import: mounting imports this package's base types.
+        from hydra_tangler.mounting import require_mount
+
+        require_mount(mount)
+    except UnsafeOutputPath as err:
+        raise OutputLoadError(
+            f"output mount escapes the target: {err.raw!r}"
+        ) from None
 
 
 def _load(point: EntryPoint) -> object:
     return cast(object, point.load())
 
 
-def select_outputs(
-    requested: str | None,
-    configured: tuple[str, ...],
-) -> tuple[Output, ...]:
-    """ Pick outputs by CLI name, else config, else every output.
+def select_outputs(requested: Sequence[str] = ()) -> tuple[Output, ...]:
+    """ Pick the named outputs, or every registered output.
 
-    ``requested`` is the ``--output`` value. ``configured`` is the
-    ``[tool.hydra] outputs`` list, ignored when ``requested`` is set.
+    ``requested`` is the repeated ``--output`` option. An empty
+    sequence runs every output.
     """
     available = load_outputs()
-    if requested is not None:
-        return (_one(available, requested),)
-    if not configured:
+    if not requested:
         return available
-    return tuple(_one(available, name) for name in configured)
+    return tuple(_one(available, name) for name in requested)
 
 
 def _one(available: tuple[Output, ...], name: str) -> Output:

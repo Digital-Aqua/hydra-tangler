@@ -2,8 +2,9 @@
 
 The process starts on the first query. The caller pushes Python
 file text with ``didOpen`` and full ``didChange`` notifications.
-``workspace/configuration`` is answered with nulls. This module does
-not translate Markdown positions.
+``workspace/configuration`` is answered with nulls. Stderr is kept
+as a short tail so a failed start can name the last line. This
+module does not translate Markdown positions.
 """
 
 import json
@@ -12,8 +13,12 @@ import signal
 import subprocess
 import threading
 import time
+from collections import deque
+from collections.abc import Callable
 from pathlib import Path
 from typing import BinaryIO, cast, final
+
+_STDERR_TAIL = 8
 
 _START_TIMEOUT = 8.0
 _REQUEST_TIMEOUT = 5.0
@@ -47,6 +52,10 @@ class PyrightServer:
         self._stdin: BinaryIO | None = None
         self._process: subprocess.Popen[bytes] | None = None
         self._thread: threading.Thread | None = None
+        self._stderr_thread: threading.Thread | None = None
+        self._stderr: deque[str] = deque(maxlen=_STDERR_TAIL)
+        self._failure = ""
+        self._request_failed = False
 
     def start(self) -> bool:
         """ Spawn the process and finish its initialize handshake. """
@@ -57,11 +66,24 @@ class PyrightServer:
             _initialize(self._shadow),
             timeout=_START_TIMEOUT,
         )
-        if started is None:
+        if self.request_failed() or started is None:
+            self._remember("basedpyright handshake failed")
             self.stop()
             return False
         self.notify("initialized", {})
         return True
+
+    def request_failed(self) -> bool:
+        """ Whether the last ``request`` failed rather than returning. """
+        return self._request_failed
+
+    def failure_detail(self) -> str:
+        """ Why the server failed, including the last stderr line. """
+        reason = self._failure or "basedpyright language server failed"
+        last = self._last_stderr()
+        if not last:
+            return reason
+        return f"{reason}: {last}"
 
     def request(
         self,
@@ -70,8 +92,11 @@ class PyrightServer:
         timeout: float = _REQUEST_TIMEOUT,
     ) -> object | None:
         """ Send a request and return its result, or None on failure. """
+        self._request_failed = False
         number = self._send_request(method, params)
         if number is None:
+            self._request_failed = True
+            self._remember("basedpyright language server is not running")
             return None
         return self._wait(number, timeout)
 
@@ -89,6 +114,9 @@ class PyrightServer:
         thread = self._thread
         if thread is not None:
             thread.join(timeout=2)
+        stderr = self._stderr_thread
+        if stderr is not None:
+            stderr.join(timeout=1)
 
     def exited(self) -> bool:
         """ Return whether the process has stopped. """
@@ -97,30 +125,52 @@ class PyrightServer:
 
     def _spawn(self) -> bool:
         try:
-            self._shadow.mkdir(parents=True, exist_ok=True)
-            process = subprocess.Popen(
-                list(self._command),
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.DEVNULL,
-                start_new_session=True,
-            )
-        except OSError:
+            process = self._open()
+        except OSError as err:
+            reason = err.strerror or str(err)
+            self._remember(f"cannot start basedpyright: {reason}")
             return False
+        return self._attach(process)
+
+    def _open(self) -> subprocess.Popen[bytes]:
+        self._shadow.mkdir(parents=True, exist_ok=True)
+        return subprocess.Popen(
+            list(self._command),
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            start_new_session=True,
+        )
+
+    def _attach(self, process: subprocess.Popen[bytes]) -> bool:
         stdin = process.stdin
         stdout = process.stdout
-        if stdin is None or stdout is None:
+        stderr = process.stderr
+        if stdin is None or stdout is None or stderr is None:
             process.kill()
+            self._remember("basedpyright stdio was not available")
             return False
         self._process = process
         self._stdin = cast(BinaryIO, stdin)
-        self._thread = threading.Thread(
-            target=self._read_loop,
-            args=(cast(BinaryIO, stdout),),
+        self._thread = self._daemon(self._read_loop, cast(BinaryIO, stdout))
+        self._stderr_thread = self._daemon(
+            self._read_stderr,
+            cast(BinaryIO, stderr),
+        )
+        return True
+
+    def _daemon(
+        self,
+        target: Callable[[BinaryIO], None],
+        stream: BinaryIO,
+    ) -> threading.Thread:
+        thread = threading.Thread(
+            target=target,
+            args=(stream,),
             daemon=True,
         )
-        self._thread.start()
-        return True
+        thread.start()
+        return thread
 
     def _send_request(self, method: str, params: object) -> int | None:
         with self._lock:
@@ -162,13 +212,18 @@ class PyrightServer:
         with self._condition:
             while number not in self._results and number not in self._errors:
                 if self._closed:
+                    self._fail_locked("basedpyright language server exited")
                     return None
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
+                    self._fail_locked("basedpyright request timed out")
                     return None
                 _ = self._condition.wait(remaining)
             if number in self._errors:
+                self._fail_locked("basedpyright request failed")
                 return None
+            self._failure = ""
+            self._request_failed = False
             return self._results.get(number)
 
     def _read_loop(self, stdout: BinaryIO) -> None:
@@ -205,8 +260,35 @@ class PyrightServer:
 
     def _mark_closed(self) -> None:
         with self._condition:
+            if not self._failure:
+                self._failure = "basedpyright language server exited"
             self._closed = True
             self._condition.notify_all()
+
+    def _remember(self, text: str) -> None:
+        with self._condition:
+            if not self._failure:
+                self._failure = text
+
+    def _fail_locked(self, text: str) -> None:
+        """ Record a failed request. The caller holds ``_condition``. """
+        self._request_failed = True
+        if not self._failure:
+            self._failure = text
+
+    def _last_stderr(self) -> str:
+        with self._lock:
+            if not self._stderr:
+                return ""
+            return self._stderr[-1]
+
+    def _read_stderr(self, stream: BinaryIO) -> None:
+        for raw in iter(stream.readline, b""):
+            text = raw.decode("utf-8", errors="replace").strip()
+            if not text:
+                continue
+            with self._lock:
+                self._stderr.append(text)
 
 
 def _initialize(shadow: Path) -> dict[str, object]:

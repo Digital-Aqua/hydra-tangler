@@ -3,6 +3,7 @@
 import json
 import os
 import subprocess
+import sys
 import threading
 from collections.abc import Callable, Generator, Sequence
 from contextlib import contextmanager
@@ -106,7 +107,7 @@ def test_shutdown_then_exit_returns_zero(tmp_path: Path) -> None:
 
 def test_dead_link_clears_after_did_change(tmp_path: Path) -> None:
     root = _project(tmp_path)
-    _ = (root / "src" / "other.md").write_text("# Other\n", encoding="utf-8")
+    _ = (root / "other.md").write_text("# Other\n", encoding="utf-8")
     uri = _chapter(root, "a.md")
     with _process(root) as (client, _proc):
         _ = client.initialize(root, write=False)
@@ -151,10 +152,10 @@ def test_lint_findings_land_on_the_markdown_line(tmp_path: Path) -> None:
 def test_save_writes_the_open_buffer_when_asked(tmp_path: Path) -> None:
     root = _project(tmp_path)
     uri = _chapter(root, "a.md")
-    disk = root / "src" / "a.md"
+    disk = root / "a.md"
     _ = disk.write_text(fence("python file=m.py", "old = 1"), encoding="utf-8")
     fresh = fence("python file=m.py", "new = 1")
-    built = root / "_build" / "python" / "m.py"
+    built = root / "_build" / "m.py"
     with _memory(root, _quiet) as client:
         _ = client.initialize(root, write=True)
         client.open_markdown(uri, fresh)
@@ -179,7 +180,11 @@ def test_hover_and_definition_follow_the_source_map(tmp_path: Path) -> None:
         "value = greet('x')",
     )
     with _memory(root, _quiet) as client:
-        _ = client.initialize(root, write=False, pyright=_pyright_command())
+        _ = client.initialize(
+            root,
+            write=False,
+            pyright_server=_pyright_command(),
+        )
         client.open_markdown(uri, text)
         _ = client.wait_status("idle")
         try:
@@ -205,11 +210,94 @@ def test_hover_and_definition_follow_the_source_map(tmp_path: Path) -> None:
     assert completed is not None
 
 
+def test_a_bad_checker_command_is_shown_and_defaults_remain(
+    tmp_path: Path,
+) -> None:
+    seen: list[tuple[str, ...]] = []
+
+    def run(argv: Sequence[str], cwd: Path) -> str:
+        _ = cwd
+        seen.append(tuple(argv))
+        return _quiet(argv, cwd)
+
+    root = _project(tmp_path)
+    uri = _chapter(root, "a.md")
+    with _memory(root, run) as client:
+        _ = client.request(
+            "initialize",
+            {
+                "processId": os.getpid(),
+                "rootPath": str(root),
+                "rootUri": root.resolve().as_uri(),
+                "capabilities": {},
+                "initializationOptions": {"pyrightCommand": [""]},
+            },
+        )
+        client.notify("initialized", {})
+        shown = client.wait_message("window/showMessage", "bad-checker-command")
+        logged = client.wait_message("window/logMessage", "bad-checker-command")
+        client.open_markdown(uri, fence("python file=m.py", "value = 1"))
+        _ = client.wait_status("idle")
+    assert "pyrightCommand" in shown
+    assert "pyrightCommand" in logged
+    names = [Path(word).name for argv in seen for word in argv]
+    assert "basedpyright" in names
+
+
+def test_a_missing_workspace_root_is_shown(tmp_path: Path) -> None:
+    with _memory(tmp_path, _quiet) as client:
+        _ = client.request(
+            "initialize",
+            {"processId": os.getpid(), "capabilities": {}},
+        )
+        client.notify("initialized", {})
+        shown = client.wait_message("window/showMessage", "workspace root")
+    assert "workspace root" in shown
+
+
+def test_an_unreadable_source_is_shown(tmp_path: Path) -> None:
+    _ = (tmp_path / "bad.md").write_bytes(b"\xff")
+    uri = _chapter(tmp_path, "ok.md")
+    with _memory(tmp_path, _quiet) as client:
+        _ = client.initialize(tmp_path, write=False)
+        client.open_markdown(uri, "# Ok\n")
+        shown = client.wait_message("window/showMessage", "bad.md")
+    assert "cannot read" in shown
+
+
+def test_a_pyright_start_failure_is_shown_once(tmp_path: Path) -> None:
+    root = _project(tmp_path)
+    uri = _chapter(root, "a.md")
+    text = fence("python file=m.py", "value = 1")
+    command = (
+        sys.executable,
+        "-c",
+        "import sys; sys.stderr.write('pyright-down\\n'); raise SystemExit(1)",
+    )
+    with _memory(root, _quiet) as client:
+        _ = client.initialize(root, write=False, pyright_server=command)
+        client.open_markdown(uri, text)
+        _ = client.wait_status("idle")
+        _ = client.request(
+            "textDocument/hover",
+            _cursor(uri, 1, 0),
+            timeout=10,
+        )
+        _ = client.request(
+            "textDocument/hover",
+            _cursor(uri, 1, 0),
+            timeout=10,
+        )
+        shown = client.messages("window/showMessage")
+    matching = [item for item in shown if "pyright-down" in item]
+    assert matching == [matching[0]]
+
+
 def test_save_does_not_write_unless_asked(tmp_path: Path) -> None:
     root = _project(tmp_path)
     uri = _chapter(root, "a.md")
     text = fence("python file=m.py", "value = 1")
-    built = root / "_build" / "python" / "m.py"
+    built = root / "_build" / "m.py"
     with _memory(root, _quiet) as client:
         _ = client.initialize(root, write=False)
         client.open_markdown(uri, text)
@@ -258,16 +346,11 @@ def _records(payload: object) -> list[object]:
 
 
 def _project(root: Path) -> Path:
-    _ = (root / "src").mkdir()
-    _ = (root / "pyproject.toml").write_text(
-        '[tool.hydra]\noutputs = ["python"]\n',
-        encoding="utf-8",
-    )
     return root
 
 
 def _chapter(root: Path, name: str) -> str:
-    return (root / "src" / name).resolve().as_uri()
+    return (root / name).resolve().as_uri()
 
 
 def _stdio(

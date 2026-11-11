@@ -6,12 +6,12 @@ import pytest
 from tests.books import fence, write_chapter
 
 from hydra_tangler.book import load_book
-from hydra_tangler.outputs.python import PythonOutput
+from hydra_tangler.outputs.files import FilesOutput
 from hydra_tangler.writer import write_files
 
 
 def _render(root: Path):
-    return PythonOutput().render(load_book(root))
+    return FilesOutput().render(load_book(root))
 
 
 def test_fences_concatenate_in_document_order_and_skip_untagged(
@@ -47,22 +47,28 @@ def test_fences_concatenate_in_document_order_and_skip_untagged(
 
 
 @pytest.mark.parametrize(
-    ("name", "prefix", "suffix"),
+    ("info", "name", "prefix", "suffix"),
     [
-        ("a.py", "# ", ""),
-        ("a.yaml", "# ", ""),
-        ("a.yml", "# ", ""),
-        ("a.toml", "# ", ""),
-        ("Containerfile", "# ", ""),
-        ("a.css", "/* ", " */"),
-        ("a.js", "// ", ""),
-        ("a.html", "<!-- ", " -->"),
+        ("python file=a.py", "a.py", "# ", ""),
+        ("py file=a.py", "a.py", "# ", ""),
+        ("yaml file=a.yaml", "a.yaml", "# ", ""),
+        ("yml file=a.yml", "a.yml", "# ", ""),
+        ("toml file=a.toml", "a.toml", "# ", ""),
+        ("containerfile file=Containerfile", "Containerfile", "# ", ""),
+        ("dockerfile file=Dockerfile", "Dockerfile", "# ", ""),
+        ("css file=a.css", "a.css", "/* ", " */"),
+        ("js file=a.js", "a.js", "// ", ""),
+        ("javascript file=a.js", "a.js", "// ", ""),
+        ("html file=a.html", "a.html", "<!-- ", " -->"),
+        ("text file=a.xyz", "a.xyz", "# ", ""),
+        ("txt file=notes.txt", "notes.txt", "# ", ""),
+        ("plaintext file=plain.txt", "plain.txt", "# ", ""),
     ],
 )
-def test_header_matches_the_extension(
-    tmp_path: Path, name: str, prefix: str, suffix: str
+def test_header_follows_the_fence_class(
+    tmp_path: Path, info: str, name: str, prefix: str, suffix: str
 ) -> None:
-    write_chapter(tmp_path, "c.md", fence(f"text file={name}", "body"))
+    write_chapter(tmp_path, "c.md", fence(info, "body"))
     rendered = _render(tmp_path)
     data = rendered.files.data_for(Path(name))
     assert data is not None
@@ -83,50 +89,26 @@ def test_html_header_follows_a_doctype(tmp_path: Path) -> None:
     assert lines[1].startswith("<!-- GENERATED")
 
 
-def test_unknown_extension_is_an_error(tmp_path: Path) -> None:
-    write_chapter(tmp_path, "c.md", fence("text file=a.xyz", "body"))
-    rendered = _render(tmp_path)
-    assert rendered.files.files == ()
-    problem = rendered.diagnostics[0]
-    assert problem.code == "no-comment"
-    assert problem.line == 1
-    assert problem.path == Path("c.md")
-
-
-def test_bad_path_is_an_error(tmp_path: Path) -> None:
+def test_escaping_path_is_an_error(tmp_path: Path) -> None:
     write_chapter(tmp_path, "c.md", fence("python file=../x.py", "x = 1"))
     rendered = _render(tmp_path)
     assert rendered.files.files == ()
-    assert rendered.diagnostics[0].code == "bad-path"
+    assert rendered.diagnostics[0].code == "path-escapes-target"
     assert rendered.diagnostics[0].line == 1
 
 
-def test_test_fences_use_a_tests_root(tmp_path: Path) -> None:
+def test_test_prefix_is_an_error(tmp_path: Path) -> None:
     write_chapter(
         tmp_path,
         "c.md",
-        fence("python file=deck/mod.py", "a = 1")
-        + fence("python file=test:deck/test_mod.py", "def test_a(): ...")
-        + fence("python file=test_b.py", "x = 1")
-        + fence("python file=test:test_b.py", "y = 2"),
+        fence("python file=test:x.py", "def test_a(): ..."),
     )
     rendered = _render(tmp_path)
-    assert rendered.diagnostics == ()
-    code = rendered.files.data_for(Path("deck/mod.py"))
-    tests = rendered.files.data_for(Path("tests/deck/test_mod.py"))
-    same_name = rendered.files.data_for(Path("test_b.py"))
-    other = rendered.files.data_for(Path("tests/test_b.py"))
-    assert code is not None and code.decode().endswith("a = 1\n")
-    assert tests is not None and tests.decode().endswith("def test_a(): ...\n")
-    assert same_name is not None and b"x = 1" in same_name
-    assert other is not None and b"y = 2" in other
-    assert rendered.files.data_for(Path("deck/test_mod.py")) is None
-
-
-def test_escaping_test_path_is_an_error(tmp_path: Path) -> None:
-    write_chapter(tmp_path, "c.md", fence("python file=test:../x.py", "x = 1"))
-    rendered = _render(tmp_path)
-    assert rendered.diagnostics[0].code == "bad-path"
+    assert rendered.files.files == ()
+    problem = rendered.diagnostics[0]
+    assert problem.code == "test-prefix-removed"
+    assert problem.severity == "error"
+    assert "file=tests/x.py" in problem.message
 
 
 def test_source_map_round_trip(tmp_path: Path) -> None:
@@ -174,7 +156,7 @@ def test_failed_render_does_not_replace_files(tmp_path: Path) -> None:
     target = tmp_path / "out"
     write_chapter(source, "c.md", fence("python file=m.py", "x = 1"))
     write_files(_render(source).files, target)
-    write_chapter(source, "c.md", fence("text file=a.xyz", "body"))
+    write_chapter(source, "c.md", fence("python file=../x.py", "x = 1"))
     rendered = _render(source)
     assert rendered.diagnostics
     assert (target / "m.py").is_file()

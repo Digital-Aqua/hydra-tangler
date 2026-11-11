@@ -19,12 +19,18 @@ dependencies = [
 hydra = "hydra_tangler.main:app"
 
 [project.entry-points."hydra_tangler.fences"]
-pytest = "hydra_tangler.fences.pytest:handler"
-python = "hydra_tangler.fences.python:handler"
+containerfile = "hydra_tangler.fences.containerfile:Containerfile"
+css = "hydra_tangler.fences.css:Css"
+html = "hydra_tangler.fences.html:Html"
+javascript = "hydra_tangler.fences.javascript:Javascript"
+python = "hydra_tangler.fences.python:Python"
+text = "hydra_tangler.fences.plaintext:PlainText"
+toml = "hydra_tangler.fences.toml:Toml"
+yaml = "hydra_tangler.fences.yaml:Yaml"
 
 [project.entry-points."hydra_tangler.outputs"]
+files = "hydra_tangler.outputs.files:output"
 htmldocs = "hydra_tangler.outputs.htmldocs:output"
-python = "hydra_tangler.outputs.python:output"
 
 [build-system]
 requires = ["uv_build>=0.11.25,<0.12.0"]

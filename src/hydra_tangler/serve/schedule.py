@@ -2,8 +2,9 @@
 
 A change waits for a quiet period. Open, save, and an explicit
 rebuild skip that wait. Work that is still running when a newer
-request arrives may finish, but its result is dropped. This module
-does not read Markdown or speak JSON-RPC.
+request arrives may finish, but its result is dropped. A user-facing
+failure is reported and the loop keeps running. This module does not
+read Markdown or speak JSON-RPC.
 """
 
 import asyncio
@@ -11,6 +12,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import final
 
+from hydra_tangler.failures import USER_FAILURES
 from hydra_tangler.serve.status import StatusReport
 
 # Same quiet period as the file watcher, so a burst of keystrokes
@@ -19,6 +21,7 @@ QUIET_SECONDS = 0.3
 
 Perform = Callable[["RebuildRequest"], Awaitable[StatusReport | None]]
 Notify = Callable[[StatusReport], None]
+Fail = Callable[[str], None]
 
 
 @dataclass(frozen=True)
@@ -33,9 +36,15 @@ class RebuildRequest:
 class RebuildScheduler:
     """ Coalesce rebuild requests onto a single loop. """
 
-    def __init__(self, perform: Perform, on_status: Notify) -> None:
+    def __init__(
+        self,
+        perform: Perform,
+        on_status: Notify,
+        on_failure: Fail,
+    ) -> None:
         self._perform = perform
         self._on_status = on_status
+        self._on_failure = on_failure
         self.generation = 0
         self._immediate = False
         self._write = False
@@ -95,10 +104,20 @@ class RebuildScheduler:
         if not await self._ready(started):
             return
         job = RebuildRequest(started, self._take_write())
-        report = await self._perform(job)
+        try:
+            report = await self._perform(job)
+        except USER_FAILURES as err:
+            self._failed(started, str(err))
+            return
         if self._stopped or started != self.generation or report is None:
             return
         self._finish(report)
+
+    def _failed(self, started: int, message: str) -> None:
+        self._on_failure(message)
+        if self._stopped or started != self.generation:
+            return
+        self._finish(self._last)
 
     async def _ready(self, started: int) -> bool:
         immediate = self._immediate

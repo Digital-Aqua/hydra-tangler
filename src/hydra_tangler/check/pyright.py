@@ -11,6 +11,7 @@ from typing import cast
 from hydra_tangler.check.errors import LintError
 from hydra_tangler.check.json_text import json_value
 from hydra_tangler.check.reported import Reported
+from hydra_tangler.check.tool import CheckerCommands
 from hydra_tangler.model import Severity
 
 
@@ -18,6 +19,10 @@ class Pyright:
     """ The basedpyright checker. """
 
     name: str = "basedpyright"
+
+    def configured(self, commands: CheckerCommands) -> tuple[str, ...]:
+        """ The basedpyright argv from the caller, if one was given. """
+        return commands.pyright
 
     def argv(
         self,
@@ -41,9 +46,11 @@ class Pyright:
         payload = _as_dict(json_value(stdout))
         if payload is None:
             raise LintError("basedpyright output was not JSON")
+        if "generalDiagnostics" not in payload:
+            raise LintError("basedpyright output has no generalDiagnostics")
         items = _as_list(payload.get("generalDiagnostics"))
         if items is None:
-            return ()
+            raise LintError("basedpyright generalDiagnostics was not a list")
         return _keep(items)
 
 
@@ -59,7 +66,7 @@ def _keep(items: list[object]) -> tuple[Reported, ...]:
 def _finding(item: object) -> Reported | None:
     record = _as_dict(item)
     if record is None:
-        return None
+        raise LintError("basedpyright diagnostic was not an object")
     severity = _severity(record.get("severity"))
     if severity is None:
         return None
@@ -96,7 +103,7 @@ def _line(start: dict[str, object] | None) -> int:
 def _severity(value: object) -> Severity | None:
     if value == "error":
         return "error"
-    if value == "warning":
+    if value in ("warning", "information", "hint"):
         return "warning"
     return None
 

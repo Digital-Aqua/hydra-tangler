@@ -5,13 +5,23 @@ put and a watcher does not wake itself. Files this writer created on
 a previous run, and that the new FileSet no longer contains, are
 removed. The previous run is recorded in ``.hydra-manifest.json`` in
 the output directory. No other module writes that directory.
+
+Every path is checked with ``vet_output_path`` and then resolved, so
+a symlink inside the target that points outside is refused for writes
+and for stale deletion. Manifest entries are checked before anything
+is deleted.
 """
 
 import json
 from pathlib import Path
 from typing import cast
 
-from hydra_tangler.model import FileSet, OutputFile
+from hydra_tangler.model import (
+    FileSet,
+    OutputFile,
+    RejectedPath,
+    vet_output_path,
+)
 
 MANIFEST_NAME = ".hydra-manifest.json"
 
@@ -24,6 +34,7 @@ def write_files(file_set: FileSet, directory: Path) -> None:
     """ Create ``directory`` and bring it in line with ``file_set``. """
     directory.mkdir(parents=True, exist_ok=True)
     previous = _read_manifest(directory)
+    _reject_stale(directory, previous)
     written = {item.path.as_posix() for item in file_set.files}
     for item in file_set.files:
         _place(directory, item)
@@ -94,12 +105,22 @@ def _manifest_paths(path: Path, raw: object) -> list[str]:
     return paths
 
 
+def _reject_stale(directory: Path, previous: tuple[str, ...]) -> None:
+    """ Resolve every manifest path before any file is removed. """
+    for relative in previous:
+        if relative == MANIFEST_NAME:
+            continue
+        _ = _within(directory, Path(relative))
+
+
 def _within(directory: Path, relative: Path) -> Path:
-    if relative.is_absolute() or ".." in relative.parts:
-        raise WriterError(f"refusing to write {relative.as_posix()}")
-    destination = directory.joinpath(relative)
+    text = relative.as_posix()
+    verdict = vet_output_path(text)
+    if isinstance(verdict, RejectedPath):
+        raise WriterError(f"refusing to write {text}")
+    destination = directory.joinpath(verdict.path)
     if not _inside(destination, directory):
-        raise WriterError(f"refusing to write {relative.as_posix()}")
+        raise WriterError(f"refusing to write {text}")
     return destination
 
 

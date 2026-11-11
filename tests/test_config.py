@@ -1,33 +1,18 @@
-""" ``[tool.hydra.check]`` commands. """
+""" Nothing under src reads a project file for Hydra settings. """
 
+import re
 from pathlib import Path
 
-import pytest
-
-from hydra_tangler.config import ConfigError, load_config
+_TOMLLIB = re.compile(r"^\s*(?:import tomllib\b|from tomllib\b)", re.MULTILINE)
 
 
-def test_check_commands_are_read(tmp_path: Path) -> None:
-    _ = (tmp_path / "pyproject.toml").write_text(
-        "\n".join(
-            (
-                "[tool.hydra.check]",
-                'pyright = ["basedpyright", "--outputjson"]',
-                'ruff = ["ruff", "check"]',
-                "",
-            )
-        ),
-        encoding="utf-8",
-    )
-    config = load_config(tmp_path)
-    assert config.check.pyright == ("basedpyright", "--outputjson")
-    assert config.check.ruff == ("ruff", "check")
-
-
-def test_a_bad_check_command_is_rejected(tmp_path: Path) -> None:
-    _ = (tmp_path / "pyproject.toml").write_text(
-        "[tool.hydra.check]\npyright = \"basedpyright\"\n",
-        encoding="utf-8",
-    )
-    with pytest.raises(ConfigError, match="pyright"):
-        _ = load_config(tmp_path)
+def test_source_does_not_read_pyproject() -> None:
+    root = Path(__file__).resolve().parents[1] / "src"
+    offenders: list[str] = []
+    for path in sorted(root.rglob("*.py")):
+        text = path.read_text(encoding="utf-8")
+        if _TOMLLIB.search(text) or '"pyproject.toml"' in text:
+            offenders.append(path.relative_to(root).as_posix())
+        if "'pyproject.toml'" in text:
+            offenders.append(path.relative_to(root).as_posix())
+    assert offenders == []

@@ -19,6 +19,7 @@ from hydra_tangler.serve.documents import markdown_relative
 from hydra_tangler.serve.positions import FilePosition, output_position
 from hydra_tangler.serve.pyright import PyrightServer, default_command
 from hydra_tangler.serve.translate import (
+    UnmappedLog,
     View,
     completion_from,
     hover_from,
@@ -30,8 +31,14 @@ from hydra_tangler.serve.translate import (
 class Navigation:
     """ One basedpyright process for the current shadow tree. """
 
-    def __init__(self, on_error: Callable[[str], None]) -> None:
+    def __init__(
+        self,
+        on_error: Callable[[str], None],
+        on_alert: Callable[[str], None],
+    ) -> None:
         self._on_error = on_error
+        self._on_alert = on_alert
+        self._misses = UnmappedLog(on_error)
         self._lock = threading.Lock()
         self._project: Path | None = None
         self._command: tuple[str, ...] = ()
@@ -42,6 +49,8 @@ class Navigation:
         self._text: dict[Path, str] = {}
         self._version: dict[Path, int] = {}
         self._failed = False
+        self._announced = False
+        self._exit_logged = False
 
     def bind(self, project: Path, command: tuple[str, ...]) -> None:
         """ Remember the project used to launch basedpyright. """
@@ -77,10 +86,15 @@ class Navigation:
             "textDocument/hover",
             _at(placed.file_uri, placed.output.line, placed.output.character),
         )
-        self._note_dead(placed.server)
-        if payload is None:
+        self._after(placed.server, payload)
+        if payload is None or placed.server.request_failed():
             return None
-        return hover_from(placed.view, placed.output.path, payload)
+        return hover_from(
+            placed.view,
+            placed.output.path,
+            payload,
+            self._misses,
+        )
 
     def definition(
         self,
@@ -96,10 +110,10 @@ class Navigation:
             "textDocument/definition",
             _at(placed.file_uri, placed.output.line, placed.output.character),
         )
-        self._note_dead(placed.server)
-        if payload is None:
+        self._after(placed.server, payload)
+        if payload is None or placed.server.request_failed():
             return None
-        return locations_from(placed.view, payload)
+        return locations_from(placed.view, payload, self._misses)
 
     def completion(
         self,
@@ -115,10 +129,15 @@ class Navigation:
             "textDocument/completion",
             _at(placed.file_uri, placed.output.line, placed.output.character),
         )
-        self._note_dead(placed.server)
-        if payload is None:
+        self._after(placed.server, payload)
+        if payload is None or placed.server.request_failed():
             return None
-        return completion_from(placed.view, placed.output.path, payload)
+        return completion_from(
+            placed.view,
+            placed.output.path,
+            payload,
+            self._misses,
+        )
 
     def stop(self) -> None:
         """ Kill the subprocess if it was started. """
@@ -180,15 +199,36 @@ class Navigation:
             shadow = self._python.shadow
         server = PyrightServer(command, shadow)
         if not server.start():
-            self._give_up()
+            self._give_up(server)
             return None
         return self._adopt(server)
 
-    def _give_up(self) -> None:
+    def _give_up(self, server: PyrightServer) -> None:
         with self._lock:
             if self._server is None:
                 self._failed = True
-        self._on_error("basedpyright language server did not start")
+            announce = not self._announced
+            self._announced = True
+        if announce:
+            self._on_alert(server.failure_detail())
+
+    def _after(self, server: PyrightServer, payload: object) -> None:
+        failed = server.request_failed()
+        self._note_dead(server)
+        dead = payload is None and server.exited()
+        if failed or dead:
+            self._announce(server)
+            return
+        with self._lock:
+            self._announced = False
+            self._exit_logged = False
+
+    def _announce(self, server: PyrightServer) -> None:
+        with self._lock:
+            if self._announced:
+                return
+            self._announced = True
+        self._on_alert(server.failure_detail())
 
     def _adopt(self, server: PyrightServer) -> PyrightServer:
         with self._lock:
@@ -216,6 +256,10 @@ class Navigation:
             self._opened.clear()
             self._text.clear()
             self._version.clear()
+            if self._exit_logged:
+                return
+            self._exit_logged = True
+        self._on_error(server.failure_detail())
 
     def _close_all(
         self,

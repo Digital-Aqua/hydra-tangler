@@ -2,15 +2,21 @@
 
 These types carry parsed documents, diagnostics, and the bytes an
 output wants written. They do not read files, write files, or decide
-what a fence means.
+what a fence means. ``vet_output_path`` is the containment rule every
+layer uses; it does not look at the filesystem or follow symlinks.
 """
 
+import posixpath
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
 Severity = Literal["error", "warning"]
+
+
+def _empty_texts() -> dict[Path, str]:
+    return {}
 
 
 @dataclass(frozen=True)
@@ -78,12 +84,88 @@ class Diagnostic:
     message: str
 
 
+class UnsafeOutputPath(Exception):
+    """ An output path is empty, absolute, or leaves the target.
+
+    ``raw`` is the path that was refused, also included in the message.
+    """
+
+    raw: str
+
+    def __init__(self, raw: str) -> None:
+        self.raw = raw
+        super().__init__(f"output path escapes the target: {raw!r}")
+
+
+@dataclass(frozen=True)
+class OutputPath:
+    """ A target-relative path that passed ``vet_output_path``. """
+
+    path: Path
+
+
+@dataclass(frozen=True)
+class RejectedPath:
+    """ A path ``vet_output_path`` refused.
+
+    ``escapes`` is true for absolute paths, backslashes, and ``..``
+    that survives normalization. It is false for an empty path, a
+    NUL, or a path that normalizes to ``.``.
+    """
+
+    raw: str
+    escapes: bool
+
+
+def vet_output_path(raw: str) -> OutputPath | RejectedPath:
+    """ Classify ``raw`` as a safe relative path or a rejection.
+
+    ``a/../b`` is safe and becomes ``b``. This is the containment rule
+    for fences, ``OutputFile``, mounts, and the writer. It does not
+    resolve symlinks.
+    """
+    if _malformed_text(raw):
+        return RejectedPath(raw, escapes=False)
+    if "\\" in raw or raw.startswith("/") or _leaves_root(raw):
+        return RejectedPath(raw, escapes=True)
+    normalized = posixpath.normpath(raw)
+    if normalized == ".":
+        return RejectedPath(raw, escapes=False)
+    return OutputPath(Path(normalized))
+
+
+# Not valid in a Windows file name, so a book using them would not
+# tangle on every platform. Control characters (including NUL) too.
+_PORTABILITY_FORBIDDEN = frozenset('<>:"|?*')
+
+
+def _malformed_text(raw: str) -> bool:
+    return raw == "" or any(
+        char in _PORTABILITY_FORBIDDEN or ord(char) < 32 for char in raw
+    )
+
+
+def _leaves_root(raw: str) -> bool:
+    normalized = posixpath.normpath(raw)
+    return normalized == ".." or normalized.startswith("../")
+
+
 @dataclass(frozen=True)
 class OutputFile:
-    """ The bytes of one relative output path. """
+    """ The bytes of one relative output path.
+
+    Construction rejects a path that fails ``vet_output_path`` and
+    stores the normalized form.
+    """
 
     path: Path
     data: bytes
+
+    def __post_init__(self) -> None:
+        verdict = vet_output_path(self.path.as_posix())
+        if isinstance(verdict, RejectedPath):
+            raise UnsafeOutputPath(self.path.as_posix())
+        object.__setattr__(self, "path", verdict.path)
 
 
 @dataclass(frozen=True)
@@ -109,8 +191,11 @@ class Book:
 
     ``diagnostics`` holds problems found while reading the documents,
     such as a fence that never closes. Later layers add their own.
+    ``texts`` is the Markdown each document was parsed from, including
+    unsaved buffer text that is not on disk.
     """
 
     root: Path
     documents: tuple[Document, ...]
     diagnostics: tuple[Diagnostic, ...] = ()
+    texts: Mapping[Path, str] = field(default_factory=_empty_texts)

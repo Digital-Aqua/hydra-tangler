@@ -28,6 +28,26 @@ def test_nested_backticks_stay_inside_the_outer_fence() -> None:
     assert "file" not in fences[1].attrs
 
 
+def test_quoted_attributes_keep_spaces() -> None:
+    text = fence("rust file=a.rs comment='// ' tangler=text", "fn main() {}")
+    parsed = parse_document(text, Path("c.md"))
+    attrs = parsed.document.fences[0].attrs
+    assert parsed.diagnostics == ()
+    assert attrs["file"] == "a.rs"
+    assert attrs["comment"] == "// "
+    assert attrs["tangler"] == "text"
+
+
+def test_unbalanced_quote_skips_the_fence() -> None:
+    text = fence("python file=m.py comment='//", "x = 1")
+    parsed = parse_document(text, Path("c.md"))
+    assert parsed.document.fences == ()
+    problem = parsed.diagnostics[0]
+    assert problem.code == "bad-fence-attrs"
+    assert problem.severity == "warning"
+    assert problem.line == 1
+
+
 def test_unclosed_fence_is_a_diagnostic() -> None:
     parsed = parse_document(f"{FENCE}python\nx\n", Path("c.md"))
     assert len(parsed.diagnostics) == 1

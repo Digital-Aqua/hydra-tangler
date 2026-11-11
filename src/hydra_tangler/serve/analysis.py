@@ -9,14 +9,13 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from hydra_tangler.book import SourceMissing
+from hydra_tangler.book import UnreadableSource
 from hydra_tangler.check.errors import LintError
 from hydra_tangler.check.links import find_dead_links
 from hydra_tangler.check.lint import Runner, lint_python
-from hydra_tangler.config import ConfigError, load_config
-from hydra_tangler.fences import FenceLoadError
+from hydra_tangler.check.tool import CheckerCommands
+from hydra_tangler.failures import USER_FAILURES
 from hydra_tangler.model import Book, Diagnostic
-from hydra_tangler.outputs import OutputLoadError, UnknownOutput
 from hydra_tangler.outputs.base import Rendered
 from hydra_tangler.pipeline import BuildResult, build_book, write_rendered
 from hydra_tangler.sourcemap import SourceMap
@@ -25,16 +24,6 @@ from hydra_tangler.writer import WriterError
 # ``lint_python`` writes the tangled tree here. The language server
 # points basedpyright at the same directory.
 _SHADOW = Path(".hydra") / "shadow"
-
-_LOAD_FAILURES = (
-    SourceMissing,
-    ConfigError,
-    OutputLoadError,
-    UnknownOutput,
-    FenceLoadError,
-    OSError,
-    UnicodeDecodeError,
-)
 
 
 @dataclass(frozen=True)
@@ -84,13 +73,14 @@ def analyse(
     root: Path,
     overrides: Mapping[Path, str],
     write: bool,
+    commands: CheckerCommands,
     run: Runner | None,
 ) -> Analysis:
     """ Load ``root``, optionally write outputs, then lint the Python. """
     loaded = _load(root, overrides)
     if isinstance(loaded, Analysis):
         return loaded
-    return _with_checks(loaded, root, write, run)
+    return _with_checks(loaded, root, write, commands, run)
 
 
 def _load(
@@ -100,7 +90,7 @@ def _load(
     try:
         result = build_book(root, overrides=dict(overrides))
         texts = _texts(result.book, overrides)
-    except _LOAD_FAILURES as err:
+    except USER_FAILURES as err:
         return _failed(str(err))
     return _Loaded(result, texts)
 
@@ -109,10 +99,11 @@ def _with_checks(
     loaded: _Loaded,
     root: Path,
     write: bool,
+    commands: CheckerCommands,
     run: Runner | None,
 ) -> Analysis:
     result = loaded.result
-    lint = _lint(root, result, run)
+    lint = _lint(root, result, commands, run)
     diagnostics = (
         *result.diagnostics,
         *find_dead_links(result.book),
@@ -147,12 +138,17 @@ def _has_error(diagnostics: Sequence[Diagnostic]) -> bool:
     return any(item.severity == "error" for item in diagnostics)
 
 
-def _lint(root: Path, result: BuildResult, run: Runner | None) -> _Lint:
+def _lint(
+    root: Path,
+    result: BuildResult,
+    commands: CheckerCommands,
+    run: Runner | None,
+) -> _Lint:
     try:
         found = lint_python(
             root,
             _python(result),
-            load_config(root).check,
+            commands,
             run=run,
         )
     except LintError as err:
@@ -164,27 +160,28 @@ def _snapshot(root: Path, result: BuildResult) -> PythonSnapshot | None:
     rendered = _python(result)
     if rendered is None:
         return None
-    files = _python_text(rendered)
+    files = decode_tangled_python(rendered)
     if not files:
         return None
     return PythonSnapshot(root / _SHADOW, rendered.source_map, files)
 
 
-def _python_text(rendered: Rendered) -> dict[Path, str]:
+def decode_tangled_python(rendered: Rendered) -> dict[Path, str]:
+    """ Decode tangled Python. An undecodable file names its path. """
     found: dict[Path, str] = {}
     for item in rendered.files.files:
         if item.path.suffix != ".py":
             continue
         try:
             found[item.path] = item.data.decode("utf-8")
-        except UnicodeDecodeError:
-            continue
+        except UnicodeDecodeError as err:
+            raise UnreadableSource(item.path, str(err)) from err
     return found
 
 
 def _python(result: BuildResult) -> Rendered | None:
     for item in result.outputs:
-        if item.name == "python":
+        if item.name == "files":
             return item.rendered
     return None
 

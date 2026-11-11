@@ -7,5 +7,5 @@ tsconfig.test.json
 node_modules/**
 .gitignore
 package-lock.json
-out/**
-!out/extension.js
+_build/**
+!_build/extension.js

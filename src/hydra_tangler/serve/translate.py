@@ -2,10 +2,14 @@
 
 Ranges inside the shadow tree are mapped through the source map.
 A location outside that tree is returned unchanged. A location in
-the shadow that the map does not know is dropped. This module does
-not speak to a process.
+the shadow that the map does not know is dropped, and reported once
+per output path when the caller passes an ``UnmappedLog``. A miss
+that is not inside the shadow stays silent. This module does not
+speak to a process.
 """
 
+import threading
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
@@ -15,6 +19,23 @@ from pygls.uris import to_fs_path
 
 from hydra_tangler.serve.positions import FileRange, markdown_range
 from hydra_tangler.sourcemap import SourceMap
+
+
+class UnmappedLog:
+    """ Report each unmapped shadow path once. """
+
+    def __init__(self, log: Callable[[str], None]) -> None:
+        self._log: Callable[[str], None] = log
+        self._seen: set[Path] = set()
+        self._lock: threading.Lock = threading.Lock()
+
+    def note(self, path: Path) -> None:
+        """ Log ``unmapped-shadow-location`` the first time for ``path``. """
+        with self._lock:
+            if path in self._seen:
+                return
+            self._seen.add(path)
+        self._log(f"unmapped-shadow-location: {path.as_posix()}")
 
 
 @dataclass(frozen=True)
@@ -32,6 +53,7 @@ def hover_from(
     view: View,
     output: Path,
     payload: object,
+    misses: UnmappedLog | None = None,
 ) -> types.Hover | None:
     """ Build a hover for ``output``, or None when there is no text. """
     record = _as_dict(payload)
@@ -45,18 +67,22 @@ def hover_from(
             kind=types.MarkupKind.Markdown,
             value=text,
         ),
-        range=_hover_range(view, output, record.get("range")),
+        range=_hover_range(view, output, record.get("range"), misses),
     )
 
 
-def locations_from(view: View, payload: object) -> list[types.Location] | None:
+def locations_from(
+    view: View,
+    payload: object,
+    misses: UnmappedLog | None = None,
+) -> list[types.Location] | None:
     """ Map a definition result onto Markdown locations. """
     records = _records(payload)
     if records is None:
         return None
     found: list[types.Location] = []
     for record in records:
-        location = _location(view, record)
+        location = _location(view, record, misses)
         if location is not None:
             found.append(location)
     if not found:
@@ -68,12 +94,15 @@ def completion_from(
     view: View,
     output: Path,
     payload: object,
+    misses: UnmappedLog | None = None,
 ) -> types.CompletionList | None:
     """ Map completion edits onto the Markdown document. """
     items = _items(payload)
     if items is None:
         return None
-    built = [_item(view, output, record) for record in items.records]
+    built = [
+        _item(view, output, record, misses) for record in items.records
+    ]
     return types.CompletionList(
         is_incomplete=items.incomplete,
         items=[item for item in built if item is not None],
@@ -108,17 +137,25 @@ def _hover_range(
     view: View,
     output: Path,
     raw: object,
+    misses: UnmappedLog | None,
 ) -> types.Range | None:
     span = _span(raw)
     if span is None:
         return None
     mapped = markdown_range(view.source_map, _output_range(output, span))
-    if mapped is None or mapped.path != view.request_path:
+    if mapped is None:
+        _note(misses, output)
+        return None
+    if mapped.path != view.request_path:
         return None
     return _lsp_range(mapped)
 
 
-def _location(view: View, record: dict[str, object]) -> types.Location | None:
+def _location(
+    view: View,
+    record: dict[str, object],
+    misses: UnmappedLog | None,
+) -> types.Location | None:
     uri = _uri_field(record)
     span = _span(record.get("targetSelectionRange"))
     if span is None:
@@ -135,6 +172,7 @@ def _location(view: View, record: dict[str, object]) -> types.Location | None:
         _output_range(place.relative, span),
     )
     if mapped is None:
+        _note(misses, place.relative)
         return None
     return types.Location(
         uri=_document_uri(view, mapped.path),
@@ -146,6 +184,7 @@ def _item(
     view: View,
     output: Path,
     record: dict[str, object],
+    misses: UnmappedLog | None,
 ) -> types.CompletionItem | None:
     label = record.get("label")
     if not isinstance(label, str) or not label:
@@ -157,7 +196,7 @@ def _item(
         kind=_kind(record.get("kind")),
         detail=detail if isinstance(detail, str) else None,
         insert_text=insert if isinstance(insert, str) else None,
-        text_edit=_text_edit(view, output, record.get("textEdit")),
+        text_edit=_text_edit(view, output, record.get("textEdit"), misses),
     )
 
 
@@ -165,6 +204,7 @@ def _text_edit(
     view: View,
     output: Path,
     raw: object,
+    misses: UnmappedLog | None,
 ) -> types.TextEdit | None:
     record = _as_dict(raw)
     if record is None:
@@ -174,9 +214,17 @@ def _text_edit(
     if not isinstance(new_text, str) or span is None:
         return None
     mapped = markdown_range(view.source_map, _output_range(output, span))
-    if mapped is None or mapped.path != view.request_path:
+    if mapped is None:
+        _note(misses, output)
+        return None
+    if mapped.path != view.request_path:
         return None
     return types.TextEdit(range=_lsp_range(mapped), new_text=new_text)
+
+
+def _note(misses: UnmappedLog | None, path: Path) -> None:
+    if misses is not None:
+        misses.note(path)
 
 
 def _edit_span(record: dict[str, object]) -> _Span | None:

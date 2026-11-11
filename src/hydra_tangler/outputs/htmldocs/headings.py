@@ -6,6 +6,7 @@ is an error. This module does not render the heading body.
 """
 
 from collections.abc import Sequence
+from pathlib import Path
 
 from markdown_it.token import Token
 
@@ -20,6 +21,7 @@ class HeadingSlugMismatch(Exception):
 def assign_heading_ids(
     tokens: Sequence[Token],
     headings: Sequence[Heading],
+    document: Path,
 ) -> None:
     """ Set ``id`` on each top-level heading opening token. """
     seen: dict[str, int] = {}
@@ -28,17 +30,34 @@ def assign_heading_ids(
         if token.type != "heading_open":
             continue
         slug = unique_slug(_inline_content(tokens, position), seen)
-        _check(slug, headings, index)
+        _check(document, slug, headings, index)
         token.attrSet("id", slug)
         index += 1
     if index != len(headings):
-        raise HeadingSlugMismatch("heading count differs from the document")
+        raise HeadingSlugMismatch(_count(document, len(headings), index))
 
 
-def _check(slug: str, headings: Sequence[Heading], index: int) -> None:
-    if index < len(headings) and headings[index].slug == slug:
+def _check(
+    document: Path,
+    slug: str,
+    headings: Sequence[Heading],
+    index: int,
+) -> None:
+    if index >= len(headings):
+        raise HeadingSlugMismatch(_count(document, len(headings), index + 1))
+    if headings[index].slug == slug:
         return
-    raise HeadingSlugMismatch(slug)
+    expected = headings[index].slug
+    place = document.as_posix()
+    raise HeadingSlugMismatch(
+        f"{place}: expected heading slug {expected!r}, found {slug!r}"
+    )
+
+
+def _count(document: Path, expected: int, actual: int) -> str:
+    return (
+        f"{document.as_posix()}: expected {expected} headings, found {actual}"
+    )
 
 
 def _inline_content(tokens: Sequence[Token], index: int) -> str:

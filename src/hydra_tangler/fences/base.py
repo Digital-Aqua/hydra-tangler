@@ -1,15 +1,29 @@
-""" What a fence handler is, and the path rules every handler shares.
+""" Shared fence results and the path check every fence class uses.
 
-A handler looks at one fence and either claims it or declines it.
-Handlers do not read the book and do not write files.
+A fence class claims one fence. It does not read the book and does
+not write files. Path containment is ``vet_output_path``; this module
+turns a rejection into a diagnostic at the fence's opening line.
 """
 
-import posixpath
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol, runtime_checkable
 
-from hydra_tangler.model import Diagnostic, Fence
+from hydra_tangler.model import Diagnostic, Fence, RejectedPath, vet_output_path
+
+
+@dataclass(frozen=True)
+class HeaderStyle:
+    """ Comment wrapping and placement for one fence's header.
+
+    ``prefix`` and ``suffix`` wrap the generated line. ``after_doctype``
+    places that line after a leading ``<!doctype`` line. The header
+    text is not stored here: it names every contributing source, which
+    a single fence does not know.
+    """
+
+    prefix: str
+    suffix: str
+    after_doctype: bool
 
 
 @dataclass(frozen=True)
@@ -18,7 +32,8 @@ class Emission:
 
     ``markdown_lines`` lines up with ``lines``. ``open_line`` is the
     fence's opening line, used when a generated header needs a source
-    location.
+    location. ``header`` is the resolved comment style, or None when
+    this fence asks for no header.
     """
 
     path: Path
@@ -26,11 +41,12 @@ class Emission:
     markdown_path: Path
     markdown_lines: tuple[int, ...]
     open_line: int
+    header: HeaderStyle | None
 
 
 @dataclass(frozen=True)
 class Claim:
-    """ The outcome of a handler accepting a fence.
+    """ The outcome of a fence class accepting a fence.
 
     A claim may carry lines, a diagnostic, or both. A bad path carries
     only a diagnostic, so nothing is emitted for that fence.
@@ -40,47 +56,31 @@ class Claim:
     diagnostic: Diagnostic | None = None
 
 
-@runtime_checkable
-class FenceHandler(Protocol):
-    """ Decides whether a fence contributes to an output file. """
-
-    def claim(self, fence: Fence) -> Claim | None:
-        """ Return None when this handler does not apply to ``fence``. """
-
-
 def output_path(raw: str) -> Path | None:
-    """ Return a relative output path, or None if ``raw`` escapes it.
+    """ Return a normalized relative path, or None when it is refused. """
+    verdict = vet_output_path(raw)
+    if isinstance(verdict, RejectedPath):
+        return None
+    return verdict.path
 
-    Absolute paths, ``.``, and anything that normalizes to ``..`` are
-    rejected. The check uses POSIX rules because fence paths are
-    written with forward slashes.
+
+def path_diagnostic(fence: Fence, raw: str) -> Diagnostic:
+    """ An error for a ``file`` value that is not a safe relative path.
+
+    Escapes use ``path-escapes-target``. An empty path, a control
+    character, or one of ``< > : " | ? *`` uses ``bad-path``. The line
+    is the fence's opening line.
     """
-    if not raw or raw.startswith("/"):
-        return None
-    normalized = posixpath.normpath(raw)
-    if normalized in (".", "..") or normalized.startswith("../"):
-        return None
-    if normalized.startswith("/"):
-        return None
-    return Path(normalized)
-
-
-def emission_for(fence: Fence, path: Path) -> Emission:
-    """ Build an emission from a fence body, keeping line numbers. """
-    numbers = tuple(
-        fence.body_line + index for index in range(len(fence.body_lines))
-    )
-    return Emission(
-        path,
-        fence.body_lines,
-        fence.path,
-        numbers,
-        fence.open_line,
-    )
-
-
-def bad_path(fence: Fence, raw: str) -> Diagnostic:
-    """ A diagnostic for a ``file`` value that is not a safe path. """
+    verdict = vet_output_path(raw)
+    escapes = isinstance(verdict, RejectedPath) and verdict.escapes
+    if escapes:
+        return Diagnostic(
+            fence.path,
+            fence.open_line,
+            "error",
+            "path-escapes-target",
+            f"file path escapes the target: {raw}",
+        )
     return Diagnostic(
         fence.path,
         fence.open_line,

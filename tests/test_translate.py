@@ -5,6 +5,7 @@ from pathlib import Path
 from lsprotocol import types
 
 from hydra_tangler.serve.translate import (
+    UnmappedLog,
     View,
     completion_from,
     hover_from,
@@ -41,6 +42,30 @@ def test_results_map_through_the_source_map(tmp_path: Path) -> None:
     edit = completed.items[0].text_edit
     assert isinstance(edit, types.TextEdit)
     assert edit.range.start.line == 2
+
+
+def test_an_unmapped_shadow_location_is_logged_once(tmp_path: Path) -> None:
+    shadow = tmp_path / "shadow"
+    _ = shadow.mkdir()
+    view = View(
+        _map(),
+        shadow,
+        tmp_path,
+        "inmemory://a.md",
+        Path("a.md"),
+    )
+    notes: list[str] = []
+    misses = UnmappedLog(notes.append)
+    inside = (shadow / "m.py").resolve().as_uri()
+    outside = (tmp_path / "stdlib.py").resolve().as_uri()
+    _ = locations_from(view, _definitions(inside, outside), misses)
+    _ = locations_from(view, _definitions(inside, outside), misses)
+    _ = completion_from(view, Path("m.py"), _completion(9), misses)
+    _ = hover_from(view, Path("other.py"), _hover(4), misses)
+    assert notes == [
+        "unmapped-shadow-location: m.py",
+        "unmapped-shadow-location: other.py",
+    ]
 
 
 def _map() -> SourceMap:

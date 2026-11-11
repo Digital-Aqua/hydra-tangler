@@ -2,7 +2,7 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "noEmit": false,
-    "outDir": "out",
+    "outDir": "_build",
     "rootDir": "src",
     "sourceMap": true,
     "types": ["node"]

@@ -23,13 +23,14 @@ Hydra is NOT written in literate style. It knows nothing about Auriga.
 main.py              Typer CLI: tangle | watch | check | where | serve
 serve/               LSP server (pygls)
 check/               lint + link checks -> Diagnostics
-outputs/             Book -> FileSet   (python.py, htmldocs.py)
-fences/              what a fence means (python.py, pytest.py)
+mounting.py          mount outputs, merge files and maps, collisions
+failures.py          the user-facing failure set (CLI and server)
+outputs/             Book -> FileSet + SourceMap (files.py, htmldocs/)
+fences/              fence classes: PlainText and thin subclasses
 book.py              discover + order + assemble the Book
-sourcemap.py         output line <-> Markdown line
+sourcemap.py         output line <-> Markdown line, sourcemap.json
 parse.py             Markdown text -> Document (markdown-it-py tokens)
 model.py             plain dataclasses shared by all layers
-config.py            [tool.hydra] in pyproject.toml
 ```
 
 ## Core types (`model.py`)
@@ -56,8 +57,31 @@ config.py            [tool.hydra] in pyproject.toml
 - Fence handlers and outputs are discovered through entry points in
   the groups `hydra_tangler.fences` and `hydra_tangler.outputs`, with
   built-ins registered the same way, so external packages can add more.
-- Source dir default: `./src`, then `./source`, then `./`. Target
-  default: `./_build/<output>/`. `--output` selects outputs.
+- Hydra never reads `pyproject.toml` or any config file. Source is the
+  CLI argument or `./`; hidden directories, `_build`, `node_modules`
+  and `__pycache__` are skipped. The target is one directory, default
+  `./_build`, shared by every output. `--output` (repeatable) selects
+  outputs.
+- Each output has a `mount`: `files` is `.`, `htmldocs` is `docs`. The
+  pipeline applies mounts, merges all outputs into one FileSet and one
+  manifest, and writes `sourcemap.json` beside them. Two outputs
+  claiming one path is an `output-collision` error.
+- Source maps are not an output. Every output returns one with its
+  files; the pipeline merges and serializes them.
+- Fence classes: `PlainText` is the base (tag `text`, `#` comments);
+  a language is a thin subclass that sets tags and comment markers.
+  Only `file=` fences are tangled. Per-fence attributes: `file`,
+  `comment`, `comment_end`, `header=false`, `tangler=<tag>`. A
+  `file=` fence with an unknown tag is an `unsupported-language`
+  warning and is skipped. The `files` output has no language
+  knowledge.
+- Output paths stay inside the target: `vet_output_path` in `model.py`
+  is the one rule, enforced by fences, `OutputFile`, mounts and the
+  writer (which also refuses symlink escapes).
+- Failures: problems in a book are Diagnostics. Missing tools, bad tool
+  output, unreadable files and refused writes are exceptions listed in
+  `failures.USER_FAILURES`; the CLI prints `error:` and exits 1, the
+  server shows a message and keeps running.
 - The heading slug function lives in one place and is used by both
   link checking and htmldocs.
 - Link checking: relative links to a missing file, or to a missing

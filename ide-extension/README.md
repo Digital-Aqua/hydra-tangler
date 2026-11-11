@@ -27,7 +27,9 @@ In VS Code, run **Extensions: Install from VSIX…** and choose that file. `uv` 
 | --- | --- | --- |
 | `hydra.serverCommand` | `[]` | Command and arguments that start the server. Empty uses `uv run --project <workspace> hydra serve`. The working directory is the first workspace folder. |
 | `hydra.write` | `false` | When true, a save tangles into the build directory. |
-| `hydra.pyrightCommand` | `[]` | Command and arguments for basedpyright. Empty uses the server default. A command that contains an empty string is ignored by the server. |
+| `hydra.pyrightCommand` | `[]` | Command and arguments for the basedpyright checker, sent as `pyrightCommand`. Empty uses `uv run --project <workspace> basedpyright --outputjson`. |
+| `hydra.pyrightServerCommand` | `[]` | Command and arguments for the basedpyright language server, sent as `pyrightServerCommand`. Empty uses `uv run --project <workspace> basedpyright-langserver --stdio`. |
+| `hydra.ruffCommand` | `[]` | Command and arguments for the ruff checker, sent as `ruffCommand`. Empty uses `uv run --project <workspace> ruff check --output-format json`. |
 | `hydra.trace.server` | `off` | Trace traffic with the language server: `off`, `messages`, or `verbose`. |
 
-Changing `hydra.serverCommand`, `hydra.write`, or `hydra.pyrightCommand` restarts the server. **Hydra: Rebuild** asks the running server to rebuild now. **Hydra: Restart Server** starts it again. The status bar shows `Hydra` while idle with no diagnostics, `Hydra: N errors, M warnings` when there are diagnostics, and a spinner while a rebuild is in progress. Click the status item to rebuild.
+A command that is present but not a list of non-empty strings is rejected; the server keeps that command's default and reports `bad-checker-command`. Changing `hydra.serverCommand`, `hydra.write`, `hydra.pyrightCommand`, `hydra.pyrightServerCommand`, or `hydra.ruffCommand` restarts the server. **Hydra: Rebuild** asks the running server to rebuild now. **Hydra: Restart Server** starts it again. The status bar shows `Hydra` while idle with no diagnostics, `Hydra: N errors, M warnings` when there are diagnostics, and a spinner while a rebuild is in progress. Click the status item to rebuild.

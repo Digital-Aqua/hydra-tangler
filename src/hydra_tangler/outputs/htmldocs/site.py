@@ -3,14 +3,15 @@
 The site index is the root document ``index.md`` when that file
 exists. Otherwise ``index.html`` is a generated table of contents in
 document order, and every Markdown file still has its own page.
-This module does not write the output directory and does not check
-links.
+This module does not write the output directory, does not check
+links, and builds no source map: a page is not a line-for-line
+translation of its Markdown.
 """
 
 from importlib.resources import files
 from pathlib import Path
 
-from hydra_tangler.model import Book, FileSet, OutputFile
+from hydra_tangler.model import Book, Document, FileSet, OutputFile
 from hydra_tangler.outputs.base import Rendered
 from hydra_tangler.outputs.htmldocs.context import DocPage, NavNode, Neighbour
 from hydra_tangler.outputs.htmldocs.highlight import pygments_stylesheet
@@ -48,9 +49,19 @@ def render_book(book: Book) -> Rendered:
 
 def _read(book: Book) -> dict[Path, str]:
     return {
-        document.path: (book.root / document.path).read_text(encoding="utf-8")
+        document.path: _text(book, document.path)
         for document in book.documents
     }
+
+
+def _text(book: Book, relative: Path) -> str:
+    """ The text the book was parsed from, otherwise the file on disk. """
+    if relative in book.texts:
+        return book.texts[relative]
+    path = book.root / relative
+    if not path.is_file():
+        return ""
+    return path.read_text(encoding="utf-8")
 
 
 def _doc_pages(book: Book, texts: dict[Path, str]) -> tuple[DocPage, ...]:
@@ -77,13 +88,23 @@ def _documents(
     pages: tuple[DocPage, ...],
     nodes: tuple[NavNode, ...],
 ) -> list[OutputFile]:
-    found: list[OutputFile] = []
-    for document, page in zip(book.documents, pages, strict=True):
-        parts = render_article(texts[document.path], document, page.output)
-        shell = document_shell(page, pages, nodes)
-        html = render_template("page.html.j2", shell=shell, parts=parts)
-        found.append(OutputFile(page.output, html.encode("utf-8")))
-    return found
+    return [
+        _document(texts[document.path], document, page, pages, nodes)
+        for document, page in zip(book.documents, pages, strict=True)
+    ]
+
+
+def _document(
+    text: str,
+    document: Document,
+    page: DocPage,
+    pages: tuple[DocPage, ...],
+    nodes: tuple[NavNode, ...],
+) -> OutputFile:
+    parts = render_article(text, document, page.output)
+    shell = document_shell(page, pages, nodes)
+    html = render_template("page.html.j2", shell=shell, parts=parts)
+    return OutputFile(page.output, html.encode("utf-8"))
 
 
 def _contents(

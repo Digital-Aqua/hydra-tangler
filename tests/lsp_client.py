@@ -71,6 +71,7 @@ class LspClient:
         *,
         write: bool,
         pyright: tuple[str, ...] = (),
+        pyright_server: tuple[str, ...] = (),
         timeout: float = 8,
     ) -> object:
         """ Initialize against ``root`` and announce ``initialized``. """
@@ -79,6 +80,8 @@ class LspClient:
         options: dict[str, object] = {"write": write}
         if pyright:
             options["pyrightCommand"] = list(pyright)
+        if pyright_server:
+            options["pyrightServerCommand"] = list(pyright_server)
         result = self.request(
             "initialize",
             {
@@ -149,6 +152,24 @@ class LspClient:
             return items
 
         return self._wait(ready, timeout)
+
+    def wait_message(
+        self,
+        method: str,
+        needle: str,
+        timeout: float = 4,
+    ) -> str:
+        """ Return a notification message once it contains ``needle``. """
+
+        def ready() -> str | None:
+            return _message_with(self._notes, method, needle)
+
+        return self._wait(ready, timeout)
+
+    def messages(self, method: str) -> list[str]:
+        """ Every notification message seen for ``method``. """
+        with self._condition:
+            return _messages(self._notes, method)
 
     def close(self) -> None:
         """ Close the write stream so the server sees end of input. """
@@ -261,6 +282,31 @@ def as_dict(value: object) -> dict[str, object] | None:
 
 def _pid() -> int:
     return os.getpid()
+
+
+def _message_with(
+    notes: list[RpcNote],
+    method: str,
+    needle: str,
+) -> str | None:
+    for message in _messages(notes, method):
+        if needle in message:
+            return message
+    return None
+
+
+def _messages(notes: list[RpcNote], method: str) -> list[str]:
+    found: list[str] = []
+    for note in notes:
+        if note.method != method:
+            continue
+        payload = as_dict(note.params)
+        if payload is None:
+            continue
+        message = payload.get("message")
+        if isinstance(message, str):
+            found.append(message)
+    return found
 
 
 def _diagnostics_for(note: RpcNote, uri: str) -> list[object] | None:

@@ -9,6 +9,8 @@ export interface HydraSettings {
   readonly serverCommand: readonly string[];
   readonly write: boolean;
   readonly pyrightCommand: readonly string[];
+  readonly pyrightServerCommand: readonly string[];
+  readonly ruffCommand: readonly string[];
 }
 
 export function readHydraSettings(
@@ -22,6 +24,11 @@ export function readHydraSettings(
       config.get("pyrightCommand"),
       "hydra.pyrightCommand",
     ),
+    pyrightServerCommand: readStrings(
+      config.get("pyrightServerCommand"),
+      "hydra.pyrightServerCommand",
+    ),
+    ruffCommand: readStrings(config.get("ruffCommand"), "hydra.ruffCommand"),
   };
 }
 

@@ -3,8 +3,9 @@
 The shadow tree is ``<project>/.hydra/shadow``. A finding whose
 output line is in the source map is reported on that Markdown line.
 A finding with no mapping is reported on the first mapped line of
-that output file, which is the first fence. This module does not
-check links.
+that output file, which is the first fence. A finding that still
+cannot be mapped is a warning on the output path. No Python output
+produces no diagnostics. This module does not check links.
 """
 
 import subprocess
@@ -17,8 +18,7 @@ from hydra_tangler.check.pyright import Pyright
 from hydra_tangler.check.reported import Reported
 from hydra_tangler.check.ruff import Ruff
 from hydra_tangler.check.shadow import prepare_shadow
-from hydra_tangler.check.tool import Checker
-from hydra_tangler.config import CheckSettings
+from hydra_tangler.check.tool import Checker, CheckerCommands
 from hydra_tangler.model import Diagnostic
 from hydra_tangler.outputs.base import Rendered
 from hydra_tangler.sourcemap import MarkdownSite, SourceMap, SourceRecord
@@ -33,7 +33,7 @@ class _Pass:
     """ One lint pass over a shadow tree. """
 
     project: Path
-    settings: CheckSettings
+    commands: CheckerCommands
     shadow: Path
     python_files: tuple[Path, ...]
     rendered: Rendered
@@ -43,7 +43,7 @@ class _Pass:
 def lint_python(
     project: Path,
     rendered: Rendered | None,
-    settings: CheckSettings,
+    commands: CheckerCommands,
     shadow: Path | None = None,
     checkers: Sequence[Checker] | None = None,
     run: Runner | None = None,
@@ -62,7 +62,7 @@ def lint_python(
     tools = checkers if checkers is not None else (Pyright(), Ruff())
     job = _Pass(
         project,
-        settings,
+        commands,
         directory,
         python_files,
         rendered,
@@ -92,44 +92,53 @@ def run_checker(argv: Sequence[str], cwd: Path) -> str:
 
 def _one_tool(tool: Checker, job: _Pass) -> tuple[Diagnostic, ...]:
     command = (
-        *tool.argv(job.project, _configured(tool.name, job.settings)),
+        *tool.argv(job.project, tool.configured(job.commands)),
         *(str(path) for path in job.python_files),
     )
     stdout = job.run(command, job.shadow)
-    found: list[Diagnostic] = []
-    for item in tool.read(stdout):
-        mapped = _mapped(item, job.shadow, job.rendered.source_map)
-        if mapped is not None:
-            found.append(mapped)
-    return tuple(found)
-
-
-def _configured(name: str, settings: CheckSettings) -> tuple[str, ...]:
-    if name == "basedpyright":
-        return settings.pyright
-    if name == "ruff":
-        return settings.ruff
-    return ()
+    return tuple(
+        _mapped(item, job.shadow, job.rendered.source_map)
+        for item in tool.read(stdout)
+    )
 
 
 def _mapped(
     item: Reported,
     shadow: Path,
     source_map: SourceMap,
-) -> Diagnostic | None:
+) -> Diagnostic:
     relative = _relative(shadow, item.file)
-    if relative is None:
-        return None
-    site = source_map.markdown_at(relative, item.line)
-    if site is None:
-        site = _first_site(source_map, relative)
-    if site is None:
-        return None
+    site = _site(source_map, relative, item.line)
+    if relative is None or site is None:
+        return _unmapped(item)
     return Diagnostic(
         site.path,
         site.line,
         item.severity,
         item.code,
+        item.message,
+    )
+
+
+def _site(
+    source_map: SourceMap,
+    relative: Path | None,
+    line: int,
+) -> MarkdownSite | None:
+    if relative is None:
+        return None
+    site = source_map.markdown_at(relative, line)
+    if site is None:
+        return _first_site(source_map, relative)
+    return site
+
+
+def _unmapped(item: Reported) -> Diagnostic:
+    return Diagnostic(
+        Path(item.file),
+        item.line,
+        "warning",
+        "unmapped-finding",
         item.message,
     )
 

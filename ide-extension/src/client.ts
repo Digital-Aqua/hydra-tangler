@@ -29,13 +29,17 @@ const launchKeys = [
   "hydra.serverCommand",
   "hydra.write",
   "hydra.pyrightCommand",
+  "hydra.pyrightServerCommand",
+  "hydra.ruffCommand",
 ];
 
 export class HydraClient {
   private language: LanguageClient | undefined;
   private chain: Promise<void> = Promise.resolve();
   private readonly status = new HydraStatusBar();
-  private readonly output = vscode.window.createOutputChannel("Hydra Tangler");
+  private readonly output = vscode.window.createOutputChannel("Hydra Tangler", {
+    log: true,
+  });
 
   constructor(private readonly folder: vscode.WorkspaceFolder) {}
 

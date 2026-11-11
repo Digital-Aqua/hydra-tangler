@@ -1,8 +1,9 @@
 """ Render one Markdown document to article parts.
 
-Heading ids and link rewriting happen here. Fenced code is a separate
-part so the page template can draw it with the code-block macro.
-This module does not build navigation or write the site.
+Heading ids and link rewriting happen here.
+Fenced code is a separate part so the page template can draw it with
+the code-block macro, copying the fence's marker onto that element.
+This module does not build navigation, the source map, or the site.
 """
 
 from collections.abc import Sequence
@@ -68,8 +69,8 @@ def render_article(
     """ Return prose and code parts for ``document``. """
     parser = _parser()
     tokens = parser.parse(text)
-    assign_heading_ids(tokens, document.headings)
-    fences = _fence_map(tokens, document.fences)
+    assign_heading_ids(tokens, document.headings, document.path)
+    fences = _fence_map(tokens, document.fences, document.path)
     return _parts(parser, tokens, fences, document.path, page)
 
 
@@ -119,7 +120,9 @@ def _flush(
         return
     renderer = parser.renderer
     if not isinstance(renderer, DocsRenderer):
-        raise FenceMismatch("docs renderer is not installed")
+        raise FenceMismatch(
+            f"{source.as_posix()}: docs renderer is not installed"
+        )
     renderer.source = source
     renderer.page = page
     html = renderer.render(tokens, parser.options, {})
@@ -130,16 +133,26 @@ def _code_part(token: Token, fence: Fence | None) -> ArticlePart:
     language = fence.language if fence is not None else ""
     anchor, output_path = _fence_label(fence)
     code = Markup(highlighted_html(token.content, language))
-    return ArticlePart("code", code, anchor, output_path, language)
+    return ArticlePart(
+        "code",
+        code,
+        anchor,
+        output_path,
+        language,
+    )
 
 
 def _fence_map(
     tokens: Sequence[Token],
     fences: Sequence[Fence],
+    document: Path,
 ) -> dict[int, Fence]:
     found = [token for token in tokens if token.type == "fence"]
     if len(found) != len(fences):
-        raise FenceMismatch("fence count differs from the document")
+        place = document.as_posix()
+        raise FenceMismatch(
+            f"{place}: expected {len(fences)} fences, found {len(found)}"
+        )
     paired = zip(found, fences, strict=True)
     return {id(token): fence for token, fence in paired}
 
