@@ -41,7 +41,10 @@ export class HydraClient {
     log: true,
   });
 
-  constructor(private readonly folder: vscode.WorkspaceFolder) {}
+  constructor(
+    private readonly folder: vscode.WorkspaceFolder,
+    private readonly project: string,
+  ) {}
 
   activate(context: vscode.ExtensionContext): void {
     context.subscriptions.push(
@@ -133,7 +136,11 @@ export class HydraClient {
 
   private createLanguage(): LanguageClient {
     const settings = readHydraSettings(this.folder);
-    const launch = serverCommand(this.folder.uri.fsPath, settings.serverCommand);
+    const launch = serverCommand(
+      this.folder.uri.fsPath,
+      settings.serverCommand,
+      this.project,
+    );
     const serverOptions: ServerOptions = {
       command: launch.command,
       args: [...launch.args],

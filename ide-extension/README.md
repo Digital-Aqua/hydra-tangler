@@ -2,7 +2,7 @@
 
 VS Code client for the Hydra Tangler language server. The extension starts `hydra serve` over stdio and shows its status. Tangling, checks, diagnostics, hover, definition, and completion all live in `hydra serve`.
 
-The client attaches to Markdown files in the first workspace folder. Saving a Markdown file tangles outputs only when `hydra.write` is on.
+The extension activates when the workspace contains a `hydra.yaml` file. That file is a marker; it is not read. The book is the directory that holds it, and the client attaches to Markdown files under that directory. Saving a Markdown file tangles outputs only when `hydra.write` is on.
 
 ## Build
 
@@ -19,13 +19,13 @@ uv run --project .. npm run package
 
 ## Install
 
-In VS Code, run **Extensions: Install from VSIX…** and choose that file. `uv` must be on `PATH` for the default server command. The workspace should be the project `hydra serve` will tangle.
+In VS Code, run **Extensions: Install from VSIX…** and choose that file. `uv` must be on `PATH` for the default server command. Put an empty `hydra.yaml` in the book directory.
 
 ## Settings
 
 | Setting | Default | Meaning |
 | --- | --- | --- |
-| `hydra.serverCommand` | `[]` | Command and arguments that start the server. Empty uses `uv run --project <workspace> hydra serve`. The working directory is the first workspace folder. |
+| `hydra.serverCommand` | `[]` | Command and arguments that start the server. Empty uses `uv run --project <hydra package> hydra serve`. A development install uses the package beside `ide-extension`; a packaged install uses the book directory. The working directory is the book directory. |
 | `hydra.write` | `false` | When true, a save tangles into the build directory. |
 | `hydra.pyrightCommand` | `[]` | Command and arguments for the basedpyright checker, sent as `pyrightCommand`. Empty uses `uv run --project <workspace> basedpyright --outputjson`. |
 | `hydra.pyrightServerCommand` | `[]` | Command and arguments for the basedpyright language server, sent as `pyrightServerCommand`. Empty uses `uv run --project <workspace> basedpyright-langserver --stdio`. |

@@ -1,8 +1,9 @@
 """ The base fence class: a ``file=`` path and a hash comment.
 
-Subclasses change tags and comment markers. They do not parse the
-info string and do not write files. Per-fence attributes override the
-class defaults: ``comment``, ``comment_end``, and ``header=false``.
+Subclasses change tags, comment markers, and ``exclusions``. They do
+not parse the info string and do not write files. Per-fence attributes
+override the class defaults: ``comment``, ``comment_end``, and
+``header=false``.
 """
 
 from pathlib import Path
@@ -15,6 +16,7 @@ from hydra_tangler.fences.base import (
     output_path,
     path_diagnostic,
 )
+from hydra_tangler.fences.exemptions import Exclusion
 from hydra_tangler.model import Fence
 
 _FALSE = "false"
@@ -24,13 +26,16 @@ class PlainText:
     """ Claim ``file=`` fences and resolve their header style.
 
     The default comment is a hash. ``header_after_doctype`` is off:
-    the header is the first line of the output file.
+    the header is the first line of the output file. ``exclusions``
+    is empty; a language subclass lists rules its fragments are not
+    expected to satisfy.
     """
 
     tags: ClassVar[tuple[str, ...]] = ("text", "txt", "plaintext")
     comment_prefix: ClassVar[str] = "# "
     comment_suffix: ClassVar[str] = ""
     header_after_doctype: ClassVar[bool] = False
+    exclusions: ClassVar[tuple[Exclusion, ...]] = ()
 
     def claim(self, fence: Fence) -> Claim:
         """ Validate ``file=`` and return the emission for this fence. """

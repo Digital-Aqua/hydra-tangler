@@ -11,8 +11,7 @@
     "Programming Languages"
   ],
   "activationEvents": [
-    "onLanguage:markdown",
-    "workspaceContains:**/pyproject.toml"
+    "workspaceContains:**/hydra.yaml"
   ],
   "main": "./_build/extension.js",
   "contributes": {
@@ -35,7 +34,7 @@
             "type": "string"
           },
           "default": [],
-          "description": "Command and arguments that start the language server. Empty uses uv run --project <workspace> hydra serve."
+          "description": "Command and arguments that start the language server. Empty uses uv run --project <hydra package> hydra serve, with the workspace folder as the working directory."
         },
         "hydra.write": {
           "type": "boolean",

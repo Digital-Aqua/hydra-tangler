@@ -44,3 +44,11 @@ class Checker(Protocol):
     def read(self, stdout: str) -> tuple[Reported, ...]:
         """ Parse the checker's JSON stdout. """
         raise NotImplementedError
+
+    def suppress(self, rules: tuple[str, ...]) -> tuple[str, ...]:
+        """ Argv that drops ``rules`` for tangled fragments.
+
+        Empty when there is nothing to drop. The codes come from the
+        language's exclusions; each checker spells the flag itself.
+        """
+        raise NotImplementedError

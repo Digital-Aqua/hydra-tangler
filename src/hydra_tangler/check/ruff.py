@@ -1,8 +1,11 @@
 """ Parse ``ruff check --output-format json`` into reported findings.
 
-Ruff's JSON has no severity, so findings are warnings: they are
-printed, and they do not by themselves fail ``check``. A present
-``severity`` of ``error`` is kept. This module does not start ruff.
+Stable ruff JSON sets ``severity`` to ``error`` on every finding.
+That value is hardcoded, not a rule level, so it is ignored.
+Findings are warnings: they are printed, and they do not by
+themselves fail ``check`` or draw an error squiggle. Fragment
+exclusions become ``--ignore``, which adds to the project's ignore
+list. This module does not start ruff.
 """
 
 from pathlib import Path
@@ -12,7 +15,6 @@ from hydra_tangler.check.errors import LintError
 from hydra_tangler.check.json_text import json_value
 from hydra_tangler.check.reported import Reported
 from hydra_tangler.check.tool import CheckerCommands
-from hydra_tangler.model import Severity
 
 
 class Ruff:
@@ -43,6 +45,16 @@ class Ruff:
             "json",
         )
 
+    def suppress(self, rules: tuple[str, ...]) -> tuple[str, ...]:
+        """ ``--ignore`` for fragment rules. Empty when nothing is dropped.
+
+        A later ``--ignore`` adds to one already on the command. It
+        does not bring back rules the project config disabled.
+        """
+        if not rules:
+            return ()
+        return ("--ignore", ",".join(rules))
+
     def read(self, stdout: str) -> tuple[Reported, ...]:
         """ Read the JSON array ruff prints. """
         items = _as_list(json_value(stdout))
@@ -70,7 +82,7 @@ def _finding(item: object) -> Reported | None:
     return Reported(
         str(record.get("filename", "")),
         _row(location),
-        _severity(record.get("severity")),
+        "warning",
         label,
         _message(record.get("message")),
     )
@@ -83,12 +95,6 @@ def _row(location: dict[str, object] | None) -> int:
     if isinstance(raw, int) and raw > 0:
         return raw
     return 1
-
-
-def _severity(value: object) -> Severity:
-    if value == "error":
-        return "error"
-    return "warning"
 
 
 def _message(value: object) -> str:

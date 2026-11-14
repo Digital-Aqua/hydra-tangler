@@ -5,7 +5,9 @@ output line is in the source map is reported on that Markdown line.
 A finding with no mapping is reported on the first mapped line of
 that output file, which is the first fence. A finding that still
 cannot be mapped is a warning on the output path. No Python output
-produces no diagnostics. This module does not check links.
+produces no diagnostics. Fragment rules listed on the Python fence
+are dropped before findings are mapped. This module does not check
+links.
 """
 
 import subprocess
@@ -19,6 +21,8 @@ from hydra_tangler.check.reported import Reported
 from hydra_tangler.check.ruff import Ruff
 from hydra_tangler.check.shadow import prepare_shadow
 from hydra_tangler.check.tool import Checker, CheckerCommands
+from hydra_tangler.fences.exemptions import Exclusion, rules_for
+from hydra_tangler.fences.python import Python
 from hydra_tangler.model import Diagnostic
 from hydra_tangler.outputs.base import Rendered
 from hydra_tangler.sourcemap import MarkdownSite, SourceMap, SourceRecord
@@ -36,6 +40,7 @@ class _Pass:
     commands: CheckerCommands
     shadow: Path
     python_files: tuple[Path, ...]
+    exclusions: tuple[Exclusion, ...]
     rendered: Rendered
     run: Runner
 
@@ -65,6 +70,7 @@ def lint_python(
         commands,
         directory,
         python_files,
+        Python.exclusions,
         rendered,
         run if run is not None else run_checker,
     )
@@ -93,6 +99,7 @@ def run_checker(argv: Sequence[str], cwd: Path) -> str:
 def _one_tool(tool: Checker, job: _Pass) -> tuple[Diagnostic, ...]:
     command = (
         *tool.argv(job.project, tool.configured(job.commands)),
+        *tool.suppress(rules_for(job.exclusions, tool.name)),
         *(str(path) for path in job.python_files),
     )
     stdout = job.run(command, job.shadow)

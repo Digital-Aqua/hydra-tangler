@@ -13,11 +13,14 @@ from hydra_tangler.check.lint import lint_python, run_checker
 from hydra_tangler.check.pyright import Pyright
 from hydra_tangler.check.ruff import Ruff
 from hydra_tangler.check.tool import CheckerCommands
+from hydra_tangler.fences.exemptions import Exclusion, rules_for
+from hydra_tangler.fences.plaintext import PlainText
+from hydra_tangler.fences.python import Python
 from hydra_tangler.outputs.files import FilesOutput
 
 
-def _rendered(root: Path, body: str):
-    write_chapter(root, "c.md", fence("python file=m.py", body))
+def _rendered(root: Path, *body: str):
+    write_chapter(root, "c.md", fence("python file=m.py", *body))
     return FilesOutput().render(load_book(root))
 
 
@@ -147,6 +150,118 @@ def test_information_and_hint_become_warnings() -> None:
     found = Pyright().read(payload)
     assert [item.severity for item in found] == ["warning", "warning"]
     assert [item.message for item in found] == ["info", "hint"]
+
+
+def test_rules_for_keeps_one_checker_in_order() -> None:
+    exclusions = (
+        Exclusion("ruff", ("I001", "F401")),
+        Exclusion("basedpyright", ("reportUnusedImport",)),
+        Exclusion("ruff", ("I001", "E501")),
+    )
+    assert rules_for(exclusions, "ruff") == ("I001", "F401", "E501")
+    assert rules_for(exclusions, "eslint") == ()
+    assert PlainText.exclusions == ()
+    assert rules_for(Python.exclusions, "ruff") == ("I001",)
+
+
+def test_ruff_command_drops_import_sorting(tmp_path: Path) -> None:
+    rendered = _rendered(tmp_path, "from typing import Any", "import os")
+    seen: list[Sequence[str]] = []
+
+    def run(argv: Sequence[str], cwd: Path) -> str:
+        _ = cwd
+        seen.append(argv)
+        return "[]"
+
+    found = lint_python(
+        tmp_path,
+        rendered,
+        CheckerCommands(),
+        shadow=tmp_path / "shadow",
+        checkers=(Ruff(),),
+        run=run,
+    )
+    assert found == ()
+    assert seen[0][-3:-1] == ("--ignore", "I001")
+
+
+def test_basedpyright_command_has_no_ignore(tmp_path: Path) -> None:
+    rendered = _rendered(tmp_path, "value = 1")
+    seen: list[Sequence[str]] = []
+
+    def run(argv: Sequence[str], cwd: Path) -> str:
+        _ = cwd
+        seen.append(argv)
+        return json.dumps({"generalDiagnostics": []})
+
+    _ = lint_python(
+        tmp_path,
+        rendered,
+        CheckerCommands(),
+        shadow=tmp_path / "shadow",
+        checkers=(Pyright(),),
+        run=run,
+    )
+    assert "--ignore" not in seen[0]
+
+
+def test_basedpyright_rejects_fragment_exclusions() -> None:
+    with pytest.raises(LintError, match="cannot drop rules"):
+        _ = Pyright().suppress(("reportUnusedImport",))
+
+
+def test_ruff_keeps_other_findings_on_an_unsorted_import(
+    tmp_path: Path,
+) -> None:
+    project = Path(__file__).resolve().parents[1]
+    rendered = _rendered(
+        tmp_path,
+        "from typing import Any",
+        "import os",
+        "",
+        "x",
+    )
+    settings = CheckerCommands(
+        ruff=(
+            "uv",
+            "run",
+            "--project",
+            str(project),
+            "ruff",
+            "check",
+            "--output-format",
+            "json",
+        )
+    )
+    found = lint_python(
+        tmp_path,
+        rendered,
+        settings,
+        shadow=tmp_path / "shadow",
+        checkers=(Ruff(),),
+    )
+    codes = [item.code for item in found]
+    assert "ruff:I001" not in codes
+    assert "ruff:F821" in codes
+    assert {item.severity for item in found} == {"warning"}
+
+
+def test_ruff_json_error_severity_stays_a_warning() -> None:
+    payload = json.dumps(
+        [
+            {
+                "filename": "m.py",
+                "code": "F401",
+                "message": "`os` imported but unused",
+                "severity": "error",
+                "location": {"row": 1, "column": 1},
+            }
+        ]
+    )
+    found = Ruff().read(payload)
+    assert len(found) == 1
+    assert found[0].code == "ruff:F401"
+    assert found[0].severity == "warning"
 
 
 def test_missing_diagnostics_are_an_error() -> None:

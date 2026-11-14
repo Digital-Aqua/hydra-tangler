@@ -70,6 +70,12 @@ model.py             plain dataclasses shared by all layers
   files; the pipeline merges and serializes them.
 - Fence classes: `PlainText` is the base (tag `text`, `#` comments);
   a language is a thin subclass that sets tags and comment markers.
+  A subclass may set `exclusions`: a checker name plus that checker's
+  rule codes that tangled fragments are not expected to satisfy. The
+  lint pass for the language asks the checker to suppress them.
+  Python drops ruff `I001` (import sorting). Add the next rule on the
+  language class; teach a new checker how to spell the flag in
+  `suppress`.
   Only `file=` fences are tangled. Per-fence attributes: `file`,
   `comment`, `comment_end`, `header=false`, `tangler=<tag>`. A
   `file=` fence with an unknown tag is an `unsupported-language`

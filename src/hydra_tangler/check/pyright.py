@@ -41,6 +41,17 @@ class Pyright:
             "--outputjson",
         )
 
+    def suppress(self, rules: tuple[str, ...]) -> tuple[str, ...]:
+        """ basedpyright has no fragment exclusions.
+
+        A non-empty list is a mistake in the language's exclusions:
+        the codes would otherwise be reported as if they applied.
+        """
+        if not rules:
+            return ()
+        codes = ", ".join(rules)
+        raise LintError(f"basedpyright cannot drop rules: {codes}")
+
     def read(self, stdout: str) -> tuple[Reported, ...]:
         """ Read ``generalDiagnostics`` from the JSON payload. """
         payload = _as_dict(json_value(stdout))
