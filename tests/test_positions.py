@@ -1,8 +1,8 @@
-""" Position translation between Markdown and tangled Python. """
+"""Position translation between Markdown and tangled Python."""
 
 from pathlib import Path
 
-from hydra_tangler.serve.positions import (
+from hydra_tangler.positions import (
     FilePosition,
     FileRange,
     markdown_range,

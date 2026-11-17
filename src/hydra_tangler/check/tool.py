@@ -1,4 +1,4 @@
-""" The checker interface shared by basedpyright and ruff.
+"""The checker interface shared by basedpyright and ruff.
 
 A checker builds its argv and parses its own JSON. Running the
 process is someone else's job. Commands come from the caller, not
@@ -14,10 +14,11 @@ from hydra_tangler.check.reported import Reported
 
 @dataclass(frozen=True)
 class CheckerCommands:
-    """ Argv prefixes for the checkers.
+    """Argv prefixes for the checkers.
 
-    An empty command means that checker builds its default
-    ``uv run --project <root>`` invocation.
+    An empty ``pyright`` command uses the basedpyright language
+    server shipped with Hydra. An empty ``ruff`` command uses
+    ``uv run --project <root>``.
     """
 
     pyright: tuple[str, ...] = ()
@@ -25,12 +26,12 @@ class CheckerCommands:
 
 
 class Checker(Protocol):
-    """ One lint tool. """
+    """One lint tool."""
 
     name: str
 
     def configured(self, commands: CheckerCommands) -> tuple[str, ...]:
-        """ The argv prefix this checker should use. """
+        """The argv prefix this checker should use."""
         raise NotImplementedError
 
     def argv(
@@ -38,15 +39,15 @@ class Checker(Protocol):
         project: Path,
         configured: tuple[str, ...],
     ) -> tuple[str, ...]:
-        """ Return the command without the files to check. """
+        """Return the command without the files to check."""
         raise NotImplementedError
 
     def read(self, stdout: str) -> tuple[Reported, ...]:
-        """ Parse the checker's JSON stdout. """
+        """Parse the checker's JSON stdout."""
         raise NotImplementedError
 
     def suppress(self, rules: tuple[str, ...]) -> tuple[str, ...]:
-        """ Argv that drops ``rules`` for tangled fragments.
+        """Argv that drops ``rules`` for tangled fragments.
 
         Empty when there is nothing to drop. The codes come from the
         language's exclusions; each checker spells the flag itself.

@@ -1,4 +1,4 @@
-""" Publish Markdown diagnostics and clear ones that went stale.
+"""Publish Markdown diagnostics and clear ones that went stale.
 
 A file that had diagnostics and now has none receives an empty list,
 which is how a client removes squiggles. This module does not rebuild
@@ -20,7 +20,7 @@ from hydra_tangler.serve.status import StatusReport, status_for
 
 @final
 class DiagnosticPublisher:
-    """ Remember which URIs were published so a later build can clear them. """
+    """Remember which URIs were published so a later build can clear them."""
 
     def __init__(self, server: LanguageServer) -> None:
         self._server = server
@@ -31,7 +31,7 @@ class DiagnosticPublisher:
         analysis: Analysis,
         opens: Mapping[Path, str],
     ) -> StatusReport:
-        """ Send the diagnostics in ``analysis`` and clear the rest. """
+        """Send the diagnostics in ``analysis`` and clear the rest."""
         source = analysis.source
         if source is None:
             return status_for(analysis.diagnostics)
@@ -95,12 +95,24 @@ def _choose_uri(
 
 def _diagnostic(item: Diagnostic, text: str) -> types.Diagnostic:
     return types.Diagnostic(
-        range=_line_range(text, item.line),
+        range=_range(item, text),
         message=item.message,
         severity=_severity(item.severity),
         code=item.code,
         source="hydra",
     )
+
+
+def _range(item: Diagnostic, text: str) -> types.Range:
+    if item.start_character is None:
+        return _line_range(text, item.line)
+    end_line = item.line if item.end_line is None else item.end_line
+    end_character = item.start_character
+    if item.end_character is not None:
+        end_character = item.end_character
+    start = types.Position(line=item.line - 1, character=item.start_character)
+    end = types.Position(line=end_line - 1, character=end_character)
+    return types.Range(start=start, end=end)
 
 
 def _line_range(text: str, line: int) -> types.Range:
@@ -116,7 +128,7 @@ def _line_range(text: str, line: int) -> types.Range:
 
 
 def _utf16_units(text: str) -> int:
-    """ LSP columns count UTF-16 code units, not Unicode code points. """
+    """LSP columns count UTF-16 code units, not Unicode code points."""
     return len(text.encode("utf-16-le")) // 2
 
 

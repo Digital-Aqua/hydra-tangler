@@ -1,4 +1,4 @@
-""" Rebuild a book and collect the diagnostics a client should see.
+"""Rebuild a book and collect the diagnostics a client should see.
 
 The caller runs this on a worker thread. Link checks and lint share
 that thread so the language-server loop stays free. This module does
@@ -13,6 +13,7 @@ from hydra_tangler.book import UnreadableSource
 from hydra_tangler.check.errors import LintError
 from hydra_tangler.check.links import find_dead_links
 from hydra_tangler.check.lint import Runner, lint_python
+from hydra_tangler.check.pyright_server import TypeChecker
 from hydra_tangler.check.tool import CheckerCommands
 from hydra_tangler.failures import USER_FAILURES
 from hydra_tangler.model import Book, Diagnostic
@@ -21,14 +22,14 @@ from hydra_tangler.pipeline import BuildResult, build_book, write_rendered
 from hydra_tangler.sourcemap import SourceMap
 from hydra_tangler.writer import WriterError
 
-# ``lint_python`` writes the tangled tree here. The language server
-# points basedpyright at the same directory.
+# ``lint_python`` writes the tangled tree here. The one basedpyright
+# language server opens those files with the book as its workspace.
 _SHADOW = Path(".hydra") / "shadow"
 
 
 @dataclass(frozen=True)
 class PythonSnapshot:
-    """ Tangled Python files and the map back to Markdown. """
+    """Tangled Python files and the map back to Markdown."""
 
     shadow: Path
     source_map: SourceMap
@@ -37,7 +38,7 @@ class PythonSnapshot:
 
 @dataclass(frozen=True)
 class Analysis:
-    """ Diagnostics from one rebuild, plus why a step failed.
+    """Diagnostics from one rebuild, plus why a step failed.
 
     ``source`` is the book root the diagnostics are relative to. It is
     ``None`` when the book could not be loaded. ``texts`` is the
@@ -55,7 +56,7 @@ class Analysis:
 
 @dataclass(frozen=True)
 class _Loaded:
-    """ A book that loaded, and the text each document was parsed from. """
+    """A book that loaded, and the text each document was parsed from."""
 
     result: BuildResult
     texts: Mapping[Path, str]
@@ -63,7 +64,7 @@ class _Loaded:
 
 @dataclass(frozen=True)
 class _Lint:
-    """ Findings from the checkers, or the reason they did not run. """
+    """Findings from the checkers, or the reason they did not run."""
 
     diagnostics: tuple[Diagnostic, ...]
     failure: str | None
@@ -75,12 +76,13 @@ def analyse(
     write: bool,
     commands: CheckerCommands,
     run: Runner | None,
+    typecheck: TypeChecker | None = None,
 ) -> Analysis:
-    """ Load ``root``, optionally write outputs, then lint the Python. """
+    """Load ``root``, optionally write outputs, then lint the Python."""
     loaded = _load(root, overrides)
     if isinstance(loaded, Analysis):
         return loaded
-    return _with_checks(loaded, root, write, commands, run)
+    return _with_checks(loaded, root, write, commands, run, typecheck)
 
 
 def _load(
@@ -101,9 +103,10 @@ def _with_checks(
     write: bool,
     commands: CheckerCommands,
     run: Runner | None,
+    typecheck: TypeChecker | None,
 ) -> Analysis:
     result = loaded.result
-    lint = _lint(root, result, commands, run)
+    lint = _lint(root, result, commands, run, typecheck)
     diagnostics = (
         *result.diagnostics,
         *find_dead_links(result.book),
@@ -143,6 +146,7 @@ def _lint(
     result: BuildResult,
     commands: CheckerCommands,
     run: Runner | None,
+    typecheck: TypeChecker | None,
 ) -> _Lint:
     try:
         found = lint_python(
@@ -150,6 +154,7 @@ def _lint(
             _python(result),
             commands,
             run=run,
+            typecheck=typecheck,
         )
     except LintError as err:
         return _Lint((), str(err))
@@ -167,7 +172,7 @@ def _snapshot(root: Path, result: BuildResult) -> PythonSnapshot | None:
 
 
 def decode_tangled_python(rendered: Rendered) -> dict[Path, str]:
-    """ Decode tangled Python. An undecodable file names its path. """
+    """Decode tangled Python. An undecodable file names its path."""
     found: dict[Path, str] = {}
     for item in rendered.files.files:
         if item.path.suffix != ".py":

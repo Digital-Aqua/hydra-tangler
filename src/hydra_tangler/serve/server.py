@@ -1,4 +1,4 @@
-""" Wire the Hydra language server to stdio.
+"""Wire the Hydra language server to stdio.
 
 Feature handlers update the session and return. They do not rebuild
 inline, and they do not parse Markdown. Navigation queries run on a
@@ -12,15 +12,20 @@ from lsprotocol import types
 from pygls.lsp.server import LanguageServer
 
 from hydra_tangler.check.lint import Runner
+from hydra_tangler.check.pyright_server import TypeChecker
 from hydra_tangler.serve.session import Session
 from hydra_tangler.serve.status import HYDRA_REBUILD, status_payload
 
 
 @final
 class HydraLanguageServer(LanguageServer):
-    """ Pygls server for one Hydra workspace. """
+    """Pygls server for one Hydra workspace."""
 
-    def __init__(self, run: Runner | None = None) -> None:
+    def __init__(
+        self,
+        run: Runner | None = None,
+        typecheck: TypeChecker | None = None,
+    ) -> None:
         # pygls leaves ``*args`` untyped, so the checker marks this
         # constructor partially unknown without the ignore.
         super().__init__(  # pyright: ignore[reportUnknownMemberType]
@@ -28,18 +33,24 @@ class HydraLanguageServer(LanguageServer):
             "0.1.0",
             text_document_sync_kind=types.TextDocumentSyncKind.Full,
         )
-        self.session = Session(self, run)
+        self.session = Session(self, run, typecheck)
 
 
-def create_server(run: Runner | None = None) -> HydraLanguageServer:
-    """ Build a server. ``run`` replaces the lint subprocess for tests. """
-    server = HydraLanguageServer(run)
+def create_server(
+    run: Runner | None = None,
+    typecheck: TypeChecker | None = None,
+) -> HydraLanguageServer:
+    """Build a server.
+
+    ``run`` replaces ruff. ``typecheck`` replaces basedpyright.
+    """
+    server = HydraLanguageServer(run, typecheck)
     _register(server)
     return server
 
 
 def run_stdio() -> None:
-    """ Serve on standard input and output until the client exits. """
+    """Serve on standard input and output until the client exits."""
     create_server().start_io()
 
 
@@ -100,7 +111,7 @@ def _closed(
 
 
 async def _shutdown(server: HydraLanguageServer, params: object | None) -> None:
-    """ Stop the rebuild loop before the process exits. """
+    """Stop the rebuild loop before the process exits."""
     _ = params
     await server.session.stop()
 
@@ -109,7 +120,7 @@ async def _rebuild(
     server: HydraLanguageServer,
     params: object | None,
 ) -> dict[str, str | int]:
-    """ Force a rebuild and return the idle status it published. """
+    """Force a rebuild and return the idle status it published."""
     _ = params
     return status_payload(await server.session.rebuild())
 

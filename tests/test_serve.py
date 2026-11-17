@@ -1,19 +1,21 @@
-""" The language server over stdio. """
+"""The language server over stdio."""
 
 import json
 import os
 import subprocess
 import sys
 import threading
-from collections.abc import Callable, Generator, Sequence
+from collections.abc import Callable, Generator, Mapping, Sequence
 from contextlib import contextmanager
 from pathlib import Path
 from typing import BinaryIO, cast
 
+import pytest
 from tests.books import fence
 from tests.lsp_client import LspClient, as_dict
 
 from hydra_tangler.check.lint import Runner
+from hydra_tangler.check.pyright_server import TypeChecker, TypeReport
 from hydra_tangler.serve.server import create_server
 
 _PROJECT = Path(__file__).resolve().parents[1]
@@ -50,12 +52,57 @@ def _process(
         _stop(proc)
 
 
+class _QuietTypes:
+    """Typechecking that reports nothing and starts no process."""
+
+    def check(
+        self,
+        book: Path,
+        shadow: Path,
+        files: Mapping[Path, str],
+    ) -> tuple[TypeReport, ...]:
+        _ = (book, shadow, files)
+        return ()
+
+
+_QUIET = _QuietTypes()
+
+
+class _Scripted:
+    """One assignment diagnostic on the tangled file's second line."""
+
+    def check(
+        self,
+        book: Path,
+        shadow: Path,
+        files: Mapping[Path, str],
+    ) -> tuple[TypeReport, ...]:
+        _ = book
+        path = next(iter(files))
+        return (
+            TypeReport(
+                (shadow / path).resolve().as_uri(),
+                1,
+                4,
+                1,
+                8,
+                "error",
+                "reportAssignmentType",
+                "bad type",
+            ),
+        )
+
+
 @contextmanager
-def _memory(root: Path, run: Runner) -> Generator[LspClient]:
+def _memory(
+    root: Path,
+    run: Runner,
+    typecheck: TypeChecker | None = _QUIET,
+) -> Generator[LspClient]:
     _ = root
     server_read, client_write = os.pipe()
     client_read, server_write = os.pipe()
-    server = create_server(run)
+    server = create_server(run, typecheck)
     thread = threading.Thread(
         target=server.start_io,
         args=(os.fdopen(server_read, "rb"), os.fdopen(server_write, "wb")),
@@ -141,12 +188,33 @@ def test_lint_findings_land_on_the_markdown_line(tmp_path: Path) -> None:
     root = _project(tmp_path)
     uri = _chapter(root, "c.md")
     text = fence("python file=m.py", "value = 1")
-    with _memory(root, _finding) as client:
+    with _memory(root, _quiet, _Scripted()) as client:
         _ = client.initialize(root, write=False)
         client.open_markdown(uri, text)
         code = "basedpyright:reportAssignmentType"
         items = client.wait_diagnostics(uri, _has(code))
     assert _line_of(items, code) == 1
+    assert _character_of(items, code) == 4
+
+
+@pytest.mark.slow
+def test_the_constructor_diagnostic_is_published(tmp_path: Path) -> None:
+    root = _project(tmp_path)
+    _vendor(root)
+    uri = _chapter(root, "c.md")
+    text = fence(
+        "python file=m.py",
+        "class Box:",
+        "    def __init__(self, n: int) -> None:",
+        "        pass",
+        "Box('no')",
+    )
+    with _memory(root, _quiet, typecheck=None) as client:
+        _ = client.initialize(root, write=False)
+        client.open_markdown(uri, text)
+        code = "basedpyright:reportArgumentType"
+        items = client.wait_diagnostics(uri, _has(code), timeout=20)
+    assert _character_of(items, code) not in (None, 0)
 
 
 def test_save_writes_the_open_buffer_when_asked(tmp_path: Path) -> None:
@@ -179,12 +247,8 @@ def test_hover_and_definition_follow_the_source_map(tmp_path: Path) -> None:
         "",
         "value = greet('x')",
     )
-    with _memory(root, _quiet) as client:
-        _ = client.initialize(
-            root,
-            write=False,
-            pyright_server=_pyright_command(),
-        )
+    with _memory(root, _quiet, typecheck=None) as client:
+        _ = client.initialize(root, write=False)
         client.open_markdown(uri, text)
         _ = client.wait_status("idle")
         try:
@@ -241,7 +305,8 @@ def test_a_bad_checker_command_is_shown_and_defaults_remain(
     assert "pyrightCommand" in shown
     assert "pyrightCommand" in logged
     names = [Path(word).name for argv in seen for word in argv]
-    assert "basedpyright" in names
+    assert "ruff" in names
+    assert "basedpyright" not in names
 
 
 def test_a_missing_workspace_root_is_shown(tmp_path: Path) -> None:
@@ -274,8 +339,8 @@ def test_a_pyright_start_failure_is_shown_once(tmp_path: Path) -> None:
         "-c",
         "import sys; sys.stderr.write('pyright-down\\n'); raise SystemExit(1)",
     )
-    with _memory(root, _quiet) as client:
-        _ = client.initialize(root, write=False, pyright_server=command)
+    with _memory(root, _quiet, typecheck=None) as client:
+        _ = client.initialize(root, write=False, pyright=command)
         client.open_markdown(uri, text)
         _ = client.wait_status("idle")
         _ = client.request(
@@ -307,17 +372,6 @@ def test_save_does_not_write_unless_asked(tmp_path: Path) -> None:
     assert not built.exists()
 
 
-def _pyright_command() -> tuple[str, ...]:
-    return (
-        "uv",
-        "run",
-        "--project",
-        str(_PROJECT),
-        "basedpyright-langserver",
-        "--stdio",
-    )
-
-
 def _cursor(uri: str, line: int, character: int) -> dict[str, object]:
     return {
         "textDocument": {"uri": uri},
@@ -347,6 +401,17 @@ def _records(payload: object) -> list[object]:
 
 def _project(root: Path) -> Path:
     return root
+
+
+def _vendor(root: Path) -> None:
+    venv = root / ".venv"
+    _ = subprocess.run(
+        [sys.executable, "-m", "venv", str(venv)],
+        check=True,
+        capture_output=True,
+    )
+    site = next((venv / "lib").glob("python*/site-packages"))
+    _ = (site / "onlyinvendor.py").write_text("VALUE = 1\n", encoding="utf-8")
 
 
 def _chapter(root: Path, name: str) -> str:
@@ -382,24 +447,6 @@ def _quiet(argv: Sequence[str], cwd: Path) -> str:
     return json.dumps({"generalDiagnostics": []})
 
 
-def _finding(argv: Sequence[str], cwd: Path) -> str:
-    _ = cwd
-    if _tool(argv) != "basedpyright":
-        return "[]"
-    payload = {
-        "generalDiagnostics": [
-            {
-                "file": argv[-1],
-                "severity": "error",
-                "message": "bad type",
-                "rule": "reportAssignmentType",
-                "range": {"start": {"line": 1, "character": 0}},
-            }
-        ]
-    }
-    return json.dumps(payload)
-
-
 def _tool(argv: Sequence[str]) -> str:
     for word in argv:
         name = Path(word).name
@@ -431,12 +478,34 @@ def _codes(items: list[object]) -> list[str]:
     return found
 
 
+def _character_of(items: list[object], code: str) -> int | None:
+    for item in items:
+        record = as_dict(item)
+        if record is None or record.get("code") != code:
+            continue
+        return _start_character(record.get("range"))
+    return None
+
+
 def _line_of(items: list[object], code: str) -> int | None:
     for item in items:
         record = as_dict(item)
         if record is None or record.get("code") != code:
             continue
         return _start_line(record.get("range"))
+    return None
+
+
+def _start_character(value: object) -> int | None:
+    span = as_dict(value)
+    if span is None:
+        return None
+    start = as_dict(span.get("start"))
+    if start is None:
+        return None
+    character = start.get("character")
+    if isinstance(character, int):
+        return character
     return None
 
 

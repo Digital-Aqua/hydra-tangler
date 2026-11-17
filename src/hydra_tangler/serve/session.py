@@ -1,4 +1,4 @@
-""" One workspace's open files, options, and rebuild loop.
+"""One workspace's open files, options, and rebuild loop.
 
 Handlers in the server call this. The blocking rebuild runs on the
 server's thread pool. This module does not register LSP methods.
@@ -14,6 +14,7 @@ from pygls.uris import to_fs_path
 from pygls.workspace import Workspace
 
 from hydra_tangler.check.lint import Runner
+from hydra_tangler.check.pyright_server import BasedpyrightCheck, TypeChecker
 from hydra_tangler.check.tool import CheckerCommands
 from hydra_tangler.pipeline import source_directory
 from hydra_tangler.serve.analysis import Analysis, analyse
@@ -31,11 +32,18 @@ from hydra_tangler.serve.status import (
 
 @final
 class Session:
-    """ Track buffers and turn them into published diagnostics. """
+    """Track buffers and turn them into published diagnostics."""
 
-    def __init__(self, server: LanguageServer, run: Runner | None) -> None:
+    def __init__(
+        self,
+        server: LanguageServer,
+        run: Runner | None,
+        typecheck: TypeChecker | None = None,
+    ) -> None:
         self._server = server
         self._run = run
+        self._typecheck = typecheck
+        self._pyright: BasedpyrightCheck | None = None
         self._documents = DocumentStore()
         self._publisher = DiagnosticPublisher(server)
         self._options = ServeOptions()
@@ -51,7 +59,7 @@ class Session:
         )
 
     def configure(self, options: object) -> None:
-        """ Store the workspace root and initialization options. """
+        """Store the workspace root and initialization options."""
         self._options = read_options(options)
         self._loop = asyncio.get_running_loop()
         self._scheduler.start()
@@ -62,23 +70,23 @@ class Session:
             self._alert("hydra serve needs a workspace root")
             return
         self._root = root
-        self._navigation.bind(root, self._options.pyright_server)
+        self._bind_pyright(root)
         self._remember_source(root)
 
     def open_document(self, uri: str, text: str) -> None:
-        """ Rebuild immediately from this open buffer. """
+        """Rebuild immediately from this open buffer."""
         self._edit(uri, text, immediate=True, write=False)
 
     def change_document(self, uri: str, text: str) -> None:
-        """ Rebuild after the quiet period. """
+        """Rebuild after the quiet period."""
         self._edit(uri, text, immediate=False, write=False)
 
     def save_document(self, uri: str, text: str) -> None:
-        """ Rebuild immediately, and write outputs when asked. """
+        """Rebuild immediately, and write outputs when asked."""
         self._edit(uri, text, immediate=True, write=self._options.write)
 
     def close_document(self, uri: str) -> None:
-        """ Drop the buffer and rebuild from disk. """
+        """Drop the buffer and rebuild from disk."""
         source = self._source
         if source is None:
             return
@@ -86,7 +94,7 @@ class Session:
             _ = self._scheduler.request(immediate=True, write=False, wait=False)
 
     async def rebuild(self) -> StatusReport:
-        """ Force a rebuild and wait until its result is published. """
+        """Force a rebuild and wait until its result is published."""
         future = self._scheduler.request(
             immediate=True,
             write=False,
@@ -97,7 +105,7 @@ class Session:
         return await future
 
     def hover(self, uri: str, line: int, character: int) -> types.Hover | None:
-        """ Hover, forwarded when the position is in a Python fence. """
+        """Hover, forwarded when the position is in a Python fence."""
         return self._navigation.hover(uri, line, character)
 
     def definition(
@@ -106,7 +114,7 @@ class Session:
         line: int,
         character: int,
     ) -> list[types.Location] | None:
-        """ Definition, forwarded when the position is in a Python fence. """
+        """Definition, forwarded when the position is in a Python fence."""
         return self._navigation.definition(uri, line, character)
 
     def completion(
@@ -115,13 +123,13 @@ class Session:
         line: int,
         character: int,
     ) -> types.CompletionList | None:
-        """ Completions, forwarded when the position is in a Python fence. """
+        """Completions, forwarded when the position is in a Python fence."""
         return self._navigation.completion(uri, line, character)
 
     async def stop(self) -> None:
-        """ Stop accepting rebuilds and the pyright subprocess. """
+        """Stop accepting rebuilds and the pyright subprocess."""
         await self._scheduler.stop()
-        await asyncio.to_thread(self._navigation.stop)
+        await asyncio.to_thread(self._stop_pyright)
 
     def _edit(
         self,
@@ -164,8 +172,9 @@ class Session:
             root,
             overlays,
             job.write,
-            CheckerCommands(self._options.pyright, self._options.ruff),
+            CheckerCommands((), self._options.ruff),
             self._run,
+            self._typecheck,
         )
 
     def _apply(self, analysis: Analysis) -> StatusReport:
@@ -206,6 +215,27 @@ class Session:
                 message=message,
             )
         )
+
+    def _bind_pyright(self, root: Path) -> None:
+        """Share one basedpyright between diagnostics and navigation.
+
+        An injected checker is used as-is. A real one is created from
+        the langserver command, or from Hydra's own binary.
+        """
+        checker = self._typecheck
+        if checker is None:
+            owned = BasedpyrightCheck(self._options.pyright, root)
+            self._pyright = owned
+            self._typecheck = owned
+            checker = owned
+        if isinstance(checker, BasedpyrightCheck):
+            self._navigation.bind(checker.server)
+
+    def _stop_pyright(self) -> None:
+        self._navigation.bind(None)
+        owned = self._pyright
+        if owned is not None:
+            owned.close()
 
 
 def _project_root(workspace: Workspace) -> Path | None:

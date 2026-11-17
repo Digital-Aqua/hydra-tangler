@@ -24,30 +24,34 @@ ln -sfn "$(pwd)" "$HOME/.vscode/extensions/digital-aqua.hydra-tangler-0.1.0"
 - `uv` must be on `PATH`.
 - For Cursor, replace `.vscode` with `.cursor`.
 
-
 ## Example
 
 Input:
 `my-project/index.md`:
+
 ```markdown
 # My Project
 
-```python file=hello.py&nbsp;
+```python file=hello.py 
 print("Hello, World!")
-```&nbsp;
+``` 
 ```
 
 Command:
+
 ```bash
 my-project/$ hydra tangle
 ```
 
 Outputs:
 `my-project/_build/hello.py`:
+
 ```python
 print("Hello, World!")
 ```
+
 `my-project/_build/docs/index.html`:
+
 ```html
 ...
 <h1>My Project</h1>
@@ -66,7 +70,7 @@ print("Hello, World!")
 `<source>` defaults to `./` (the working directory). There is no config file.
 `<target>` defaults to `./_build`. A fence `file=mypackage/myfile.py` is written to `_build/mypackage/myfile.py`. HTML docs land under `_build/docs/`. The combined source map is `_build/sourcemap.json` (skip it with `--no-sourcemap`).
 `--output` may be repeated. With none given, every registered output runs.
-`--pyright-command` and `--ruff-command` are shell-style argument strings. When omitted, each checker runs as `uv run --project <root> ...`.
+`--pyright-command` and `--ruff-command` are shell-style argument strings. When omitted, basedpyright is the language server shipped with Hydra and ruff runs as `uv run --project <root> ruff`.
 
 ## No Bootstrapping
 

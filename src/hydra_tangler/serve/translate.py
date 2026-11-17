@@ -1,4 +1,4 @@
-""" Turn basedpyright results into Markdown locations.
+"""Turn basedpyright results into Markdown locations.
 
 Ranges inside the shadow tree are mapped through the source map.
 A location outside that tree is returned unchanged. A location in
@@ -17,12 +17,12 @@ from typing import cast
 from lsprotocol import types
 from pygls.uris import to_fs_path
 
-from hydra_tangler.serve.positions import FileRange, markdown_range
+from hydra_tangler.positions import FileRange, markdown_range
 from hydra_tangler.sourcemap import SourceMap
 
 
 class UnmappedLog:
-    """ Report each unmapped shadow path once. """
+    """Report each unmapped shadow path once."""
 
     def __init__(self, log: Callable[[str], None]) -> None:
         self._log: Callable[[str], None] = log
@@ -30,7 +30,7 @@ class UnmappedLog:
         self._lock: threading.Lock = threading.Lock()
 
     def note(self, path: Path) -> None:
-        """ Log ``unmapped-shadow-location`` the first time for ``path``. """
+        """Log ``unmapped-shadow-location`` the first time for ``path``."""
         with self._lock:
             if path in self._seen:
                 return
@@ -40,7 +40,7 @@ class UnmappedLog:
 
 @dataclass(frozen=True)
 class View:
-    """ The book a result is being translated for. """
+    """The book a result is being translated for."""
 
     source_map: SourceMap
     shadow: Path
@@ -55,7 +55,7 @@ def hover_from(
     payload: object,
     misses: UnmappedLog | None = None,
 ) -> types.Hover | None:
-    """ Build a hover for ``output``, or None when there is no text. """
+    """Build a hover for ``output``, or None when there is no text."""
     record = _as_dict(payload)
     if record is None:
         return None
@@ -76,7 +76,7 @@ def locations_from(
     payload: object,
     misses: UnmappedLog | None = None,
 ) -> list[types.Location] | None:
-    """ Map a definition result onto Markdown locations. """
+    """Map a definition result onto Markdown locations."""
     records = _records(payload)
     if records is None:
         return None
@@ -96,13 +96,11 @@ def completion_from(
     payload: object,
     misses: UnmappedLog | None = None,
 ) -> types.CompletionList | None:
-    """ Map completion edits onto the Markdown document. """
+    """Map completion edits onto the Markdown document."""
     items = _items(payload)
     if items is None:
         return None
-    built = [
-        _item(view, output, record, misses) for record in items.records
-    ]
+    built = [_item(view, output, record, misses) for record in items.records]
     return types.CompletionList(
         is_incomplete=items.incomplete,
         items=[item for item in built if item is not None],

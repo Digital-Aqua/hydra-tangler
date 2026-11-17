@@ -1,4 +1,4 @@
-""" Command line: tangle, where, check, watch, and serve.
+"""Command line: tangle, where, check, watch, and serve.
 
 Document problems are printed as diagnostics. Error severity exits
 1, without a traceback. Warning severity, including dead links, does
@@ -36,7 +36,7 @@ app = typer.Typer(add_completion=False, help="Tangle Markdown into code.")
 
 
 class UsageError(Exception):
-    """ The command line value is not a FILE:LINE spec. """
+    """The command line value is not a FILE:LINE spec."""
 
 
 # ``UsageError`` is raised only while parsing a command-line spec.
@@ -65,7 +65,7 @@ def tangle(
         typer.Option("--no-sourcemap", help="Do not write sourcemap.json."),
     ] = False,
 ) -> None:
-    """ Concatenate file fences and write the output files. """
+    """Concatenate file fences and write the output files."""
     _guard(lambda: _tangle(source, target, output, no_sourcemap))
 
 
@@ -78,7 +78,7 @@ def where(
         ),
     ],
 ) -> None:
-    """ Print the Markdown location that produced an output line. """
+    """Print the Markdown location that produced an output line."""
     _guard(lambda: _where(spec))
 
 
@@ -96,7 +96,7 @@ def check(
         str | None,
         typer.Option(
             "--pyright-command",
-            help="Shell-style argv for basedpyright. Default: uv run.",
+            help="Argv for basedpyright-langserver. Default: Hydra's.",
         ),
     ] = None,
     ruff_command: Annotated[
@@ -107,7 +107,7 @@ def check(
         ),
     ] = None,
 ) -> None:
-    """ Report dead links and lint findings. """
+    """Report dead links and lint findings."""
     _guard(lambda: _check(source, json_output, pyright_command, ruff_command))
 
 
@@ -133,13 +133,13 @@ def watch(
         typer.Option("--no-sourcemap", help="Do not write sourcemap.json."),
     ] = False,
 ) -> None:
-    """ Re-tangle when Markdown under the source directory changes. """
+    """Re-tangle when Markdown under the source directory changes."""
     _guard(lambda: _watch(source, target, output, no_sourcemap))
 
 
 @app.command()
 def serve() -> None:
-    """ Speak the language server protocol on standard input and output. """
+    """Speak the language server protocol on standard input and output."""
     run_stdio()
 
 
@@ -234,7 +234,7 @@ def _names(output: list[str] | None) -> tuple[str, ...]:
 
 
 def _command(text: str | None) -> tuple[str, ...]:
-    """ Split a shell-style argv. ``None`` keeps the checker default. """
+    """Split a shell-style argv. ``None`` keeps the checker default."""
     if text is None:
         return ()
     try:
@@ -315,7 +315,7 @@ def _json(diagnostics: Sequence[Diagnostic]) -> str:
 
 @dataclass(frozen=True)
 class _Query:
-    """ A target-relative output line to look up. """
+    """A target-relative output line to look up."""
 
     path: Path
     line: int
@@ -329,7 +329,7 @@ def _parse_spec(spec: str, cwd: Path) -> _Query:
 
 
 def _target_relative(spec_path: Path, cwd: Path) -> Path:
-    """ Strip a ``_build/`` prefix so a built path matches the map. """
+    """Strip a ``_build/`` prefix so a built path matches the map."""
     candidate = spec_path if spec_path.is_absolute() else cwd / spec_path
     build = (cwd / "_build").resolve()
     try:

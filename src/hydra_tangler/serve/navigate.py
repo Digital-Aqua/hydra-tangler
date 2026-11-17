@@ -1,9 +1,8 @@
-""" Forward navigation queries to a basedpyright subprocess.
+"""Forward navigation queries to the shared basedpyright server.
 
-The process starts on the first hover, definition, or completion.
-While it is running, each rebuild sends ``didOpen`` for a new Python
-file, a full ``didChange`` when its text differs, and ``didClose``
-when it disappears. This module does not rebuild the book.
+The process is the one ``check`` also uses for diagnostics. Each
+rebuild syncs the tangled Python into it. This module does not
+rebuild the book and does not start a second basedpyright.
 """
 
 import threading
@@ -14,10 +13,10 @@ from typing import final
 
 from lsprotocol import types
 
+from hydra_tangler.check.pyright_server import PyrightServer
+from hydra_tangler.positions import FilePosition, output_position
 from hydra_tangler.serve.analysis import PythonSnapshot
 from hydra_tangler.serve.documents import markdown_relative
-from hydra_tangler.serve.positions import FilePosition, output_position
-from hydra_tangler.serve.pyright import PyrightServer, default_command
 from hydra_tangler.serve.translate import (
     UnmappedLog,
     View,
@@ -29,7 +28,7 @@ from hydra_tangler.serve.translate import (
 
 @final
 class Navigation:
-    """ One basedpyright process for the current shadow tree. """
+    """Hover, definition, and completion on the shared typechecker."""
 
     def __init__(
         self,
@@ -40,45 +39,34 @@ class Navigation:
         self._on_alert = on_alert
         self._misses = UnmappedLog(on_error)
         self._lock = threading.Lock()
-        self._project: Path | None = None
-        self._command: tuple[str, ...] = ()
         self._source: Path | None = None
         self._python: PythonSnapshot | None = None
         self._server: PyrightServer | None = None
-        self._opened: set[Path] = set()
-        self._text: dict[Path, str] = {}
-        self._version: dict[Path, int] = {}
-        self._failed = False
-        self._announced = False
         self._exit_logged = False
 
-    def bind(self, project: Path, command: tuple[str, ...]) -> None:
-        """ Remember the project used to launch basedpyright. """
+    def bind(self, server: PyrightServer | None) -> None:
+        """Use ``server`` for later queries. ``None`` disables them."""
         with self._lock:
-            self._project = project
-            self._command = command
+            self._server = server
 
     def update(
         self,
         source: Path | None,
         python: PythonSnapshot | None,
     ) -> None:
-        """ Remember the latest tangle and push it if pyright is up. """
+        """Remember the latest tangle and push it when pyright is up."""
         with self._lock:
-            previous = self._python
             self._source = source
             self._python = python
             server = self._server
-            if server is None:
-                self._forget_closed(python)
-                return
-            if python is None:
-                self._close_all(server, previous)
-                return
-            self._push(server, python)
+        if server is None or python is None:
+            return
+        if not self._running(server):
+            return
+        server.sync(python.shadow, python.files)
 
     def hover(self, uri: str, line: int, character: int) -> types.Hover | None:
-        """ Hover at a Markdown position, or None outside a Python fence. """
+        """Hover at a Markdown position, or None outside a Python fence."""
         placed = self._placed(uri, line, character)
         if placed is None:
             return None
@@ -86,7 +74,7 @@ class Navigation:
             "textDocument/hover",
             _at(placed.file_uri, placed.output.line, placed.output.character),
         )
-        self._after(placed.server, payload)
+        self._after(placed.server)
         if payload is None or placed.server.request_failed():
             return None
         return hover_from(
@@ -102,7 +90,7 @@ class Navigation:
         line: int,
         character: int,
     ) -> list[types.Location] | None:
-        """ Definition at a Markdown position. """
+        """Definition at a Markdown position."""
         placed = self._placed(uri, line, character)
         if placed is None:
             return None
@@ -110,7 +98,7 @@ class Navigation:
             "textDocument/definition",
             _at(placed.file_uri, placed.output.line, placed.output.character),
         )
-        self._after(placed.server, payload)
+        self._after(placed.server)
         if payload is None or placed.server.request_failed():
             return None
         return locations_from(placed.view, payload, self._misses)
@@ -121,7 +109,7 @@ class Navigation:
         line: int,
         character: int,
     ) -> types.CompletionList | None:
-        """ Completions at a Markdown position. """
+        """Completions at a Markdown position."""
         placed = self._placed(uri, line, character)
         if placed is None:
             return None
@@ -129,7 +117,7 @@ class Navigation:
             "textDocument/completion",
             _at(placed.file_uri, placed.output.line, placed.output.character),
         )
-        self._after(placed.server, payload)
+        self._after(placed.server)
         if payload is None or placed.server.request_failed():
             return None
         return completion_from(
@@ -140,13 +128,10 @@ class Navigation:
         )
 
     def stop(self) -> None:
-        """ Kill the subprocess if it was started. """
+        """Stop the shared server if this session owns the binding."""
         with self._lock:
             server = self._server
             self._server = None
-            self._opened.clear()
-            self._text.clear()
-            self._version.clear()
         if server is not None:
             server.stop()
 
@@ -158,12 +143,21 @@ class Navigation:
     ) -> _Placed | None:
         with self._lock:
             ready = self._ready(uri, line, character)
-        if ready is None:
+            server = self._server
+        if ready is None or server is None:
             return None
-        server = ready.server if ready.server is not None else self._start()
-        if server is None:
+        if not self._running(server):
             return None
         return _Placed(server, ready.view, ready.output, ready.file_uri)
+
+    def _running(self, server: PyrightServer) -> bool:
+        if server.ensure_started():
+            with self._lock:
+                self._exit_logged = False
+            return True
+        self._announce(server)
+        self._note_dead(server)
+        return False
 
     def _ready(
         self,
@@ -171,7 +165,7 @@ class Navigation:
         line: int,
         character: int,
     ) -> _Ready | None:
-        """ Resolve a fence position. The caller holds the lock. """
+        """Resolve a fence position. The caller holds the lock."""
         python = self._python
         source = self._source
         if python is None or source is None:
@@ -183,161 +177,33 @@ class Navigation:
         if output is None:
             return None
         return _Ready(
-            self._server,
             _view(python, source, uri, relative),
             output,
             _file_uri(python.shadow, output.path),
         )
 
-    def _start(self) -> PyrightServer | None:
-        with self._lock:
-            if self._server is not None:
-                return self._server
-            if self._failed or self._project is None or self._python is None:
-                return None
-            command = self._command or default_command(self._project)
-            shadow = self._python.shadow
-        server = PyrightServer(command, shadow)
-        if not server.start():
-            self._give_up(server)
-            return None
-        return self._adopt(server)
-
-    def _give_up(self, server: PyrightServer) -> None:
-        with self._lock:
-            if self._server is None:
-                self._failed = True
-            announce = not self._announced
-            self._announced = True
-        if announce:
-            self._on_alert(server.failure_detail())
-
-    def _after(self, server: PyrightServer, payload: object) -> None:
-        failed = server.request_failed()
-        self._note_dead(server)
-        dead = payload is None and server.exited()
-        if failed or dead:
+    def _after(self, server: PyrightServer) -> None:
+        if server.request_failed() or server.exited():
             self._announce(server)
-            return
-        with self._lock:
-            self._announced = False
-            self._exit_logged = False
+            self._note_dead(server)
 
     def _announce(self, server: PyrightServer) -> None:
-        with self._lock:
-            if self._announced:
-                return
-            self._announced = True
-        self._on_alert(server.failure_detail())
-
-    def _adopt(self, server: PyrightServer) -> PyrightServer:
-        with self._lock:
-            current = self._server
-            if current is not None:
-                duplicate = server
-                chosen = current
-            else:
-                duplicate = None
-                chosen = server
-                self._server = server
-                if self._python is not None:
-                    self._push(server, self._python)
-        if duplicate is not None:
-            duplicate.stop()
-        return chosen
+        detail = server.claim_failure()
+        if detail is not None:
+            self._on_alert(detail)
 
     def _note_dead(self, server: PyrightServer) -> None:
         if not server.exited():
             return
         with self._lock:
-            if self._server is not server:
-                return
-            self._server = None
-            self._opened.clear()
-            self._text.clear()
-            self._version.clear()
-            if self._exit_logged:
+            if self._server is not server or self._exit_logged:
                 return
             self._exit_logged = True
         self._on_error(server.failure_detail())
 
-    def _close_all(
-        self,
-        server: PyrightServer,
-        previous: PythonSnapshot | None,
-    ) -> None:
-        if previous is None:
-            return
-        for path in list(self._opened):
-            server.notify(
-                "textDocument/didClose",
-                _identifier(previous.shadow, path),
-            )
-            self._drop(path)
-
-    def _forget_closed(self, python: PythonSnapshot | None) -> None:
-        if python is None:
-            self._opened.clear()
-            self._text.clear()
-            self._version.clear()
-            return
-        missing = [path for path in self._opened if path not in python.files]
-        for path in missing:
-            self._drop(path)
-
-    def _push(self, server: PyrightServer, python: PythonSnapshot) -> None:
-        self._close_missing(server, python)
-        for path, text in python.files.items():
-            self._sync_file(server, python.shadow, path, text)
-
-    def _close_missing(
-        self,
-        server: PyrightServer,
-        python: PythonSnapshot,
-    ) -> None:
-        missing = [path for path in self._opened if path not in python.files]
-        for path in missing:
-            server.notify(
-                "textDocument/didClose",
-                _identifier(python.shadow, path),
-            )
-            self._drop(path)
-
-    def _sync_file(
-        self,
-        server: PyrightServer,
-        shadow: Path,
-        path: Path,
-        text: str,
-    ) -> None:
-        if path not in self._opened:
-            self._version[path] = 1
-            server.notify(
-                "textDocument/didOpen",
-                _opened(shadow, path, text, 1),
-            )
-            self._opened.add(path)
-            self._text[path] = text
-            return
-        if self._text.get(path) == text:
-            return
-        version = self._version.get(path, 1) + 1
-        self._version[path] = version
-        self._text[path] = text
-        server.notify(
-            "textDocument/didChange",
-            _changed(shadow, path, text, version),
-        )
-
-    def _drop(self, path: Path) -> None:
-        self._opened.discard(path)
-        _ = self._text.pop(path, None)
-        _ = self._version.pop(path, None)
-
 
 @dataclass(frozen=True)
 class _Ready:
-    server: PyrightServer | None
     view: View
     output: FilePosition
     file_uri: str
@@ -370,38 +236,6 @@ def _at(uri: str, line: int, character: int) -> dict[str, object]:
     return {
         "textDocument": {"uri": uri},
         "position": {"line": line, "character": character},
-    }
-
-
-def _identifier(shadow: Path, path: Path) -> dict[str, object]:
-    return {"textDocument": {"uri": _file_uri(shadow, path)}}
-
-
-def _opened(
-    shadow: Path,
-    path: Path,
-    text: str,
-    version: int,
-) -> dict[str, object]:
-    return {
-        "textDocument": {
-            "uri": _file_uri(shadow, path),
-            "languageId": "python",
-            "version": version,
-            "text": text,
-        }
-    }
-
-
-def _changed(
-    shadow: Path,
-    path: Path,
-    text: str,
-    version: int,
-) -> dict[str, object]:
-    return {
-        "textDocument": {"uri": _file_uri(shadow, path), "version": version},
-        "contentChanges": [{"text": text}],
     }
 
 

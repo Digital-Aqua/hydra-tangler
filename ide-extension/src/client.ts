@@ -29,7 +29,6 @@ const launchKeys = [
   "hydra.serverCommand",
   "hydra.write",
   "hydra.pyrightCommand",
-  "hydra.pyrightServerCommand",
   "hydra.ruffCommand",
 ];
 

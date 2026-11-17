@@ -1,9 +1,10 @@
-""" Translate positions between Markdown and tangled Python.
+"""Translate positions between Markdown and tangled Python.
 
-A column is copied through unchanged. That matches the language
-server protocol when the line is ASCII; a line with characters
-outside the basic multilingual plane can disagree by a column.
-This module does not start a process or speak JSON-RPC.
+Check and serve both use this map. A column is copied through
+unchanged. That matches the language server protocol when the line
+is ASCII; a line with characters outside the basic multilingual
+plane can disagree by a column. This module does not start a
+process or speak JSON-RPC.
 """
 
 from dataclasses import dataclass
@@ -18,7 +19,7 @@ _REST_OF_LINE = 10_000
 
 @dataclass(frozen=True)
 class FilePosition:
-    """ A 0-based position in a file relative to its tree. """
+    """A 0-based position in a file relative to its tree."""
 
     path: Path
     line: int
@@ -27,7 +28,7 @@ class FilePosition:
 
 @dataclass(frozen=True)
 class FileRange:
-    """ A 0-based range in a file relative to its tree. """
+    """A 0-based range in a file relative to its tree."""
 
     path: Path
     start_line: int
@@ -42,7 +43,7 @@ def output_position(
     line: int,
     character: int,
 ) -> FilePosition | None:
-    """ Map a Markdown position onto the first Python line it produced. """
+    """Map a Markdown position onto the first Python line it produced."""
     sites = source_map.output_at(markdown, line + 1)
     for site in sites:
         if site.path.suffix == ".py":
@@ -54,7 +55,7 @@ def markdown_range(
     source_map: SourceMap,
     output: FileRange,
 ) -> FileRange | None:
-    """ Map a Python range back onto Markdown.
+    """Map a Python range back onto Markdown.
 
     Both ends are kept when they stay in one file and the line gap is
     the same. Otherwise the range is the start line only.

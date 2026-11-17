@@ -11,6 +11,7 @@ list. This module does not start ruff.
 from pathlib import Path
 from typing import cast
 
+from hydra_tangler.check.defaults import ruff_config_args
 from hydra_tangler.check.errors import LintError
 from hydra_tangler.check.json_text import json_value
 from hydra_tangler.check.reported import Reported
@@ -31,10 +32,13 @@ class Ruff:
         project: Path,
         configured: tuple[str, ...],
     ) -> tuple[str, ...]:
-        """ Use ``configured`` or the default ``uv run`` command. """
-        if configured:
-            return configured
-        return (
+        """ Use ``configured`` or the default ``uv run`` command.
+
+        The generated config is appended either way, so a custom
+        ruff argv still checks with the tangler defaults underneath
+        the book.
+        """
+        command = configured or (
             "uv",
             "run",
             "--project",
@@ -44,6 +48,7 @@ class Ruff:
             "--output-format",
             "json",
         )
+        return (*command, *ruff_config_args(project))
 
     def suppress(self, rules: tuple[str, ...]) -> tuple[str, ...]:
         """ ``--ignore`` for fragment rules. Empty when nothing is dropped.

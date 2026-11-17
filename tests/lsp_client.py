@@ -1,4 +1,4 @@
-""" A tiny JSON-RPC client for language-server tests.
+"""A tiny JSON-RPC client for language-server tests.
 
 Speaks Content-Length framing on a pair of binary streams. It does
 not know which methods Hydra implements.
@@ -18,7 +18,7 @@ from hydra_tangler.serve.status import HYDRA_STATUS
 
 @dataclass(frozen=True)
 class RpcNote:
-    """ One notification the server sent. """
+    """One notification the server sent."""
 
     method: str
     params: object
@@ -26,7 +26,7 @@ class RpcNote:
 
 @final
 class LspClient:
-    """ Read server messages on a background thread. """
+    """Read server messages on a background thread."""
 
     def __init__(self, reader: BinaryIO, writer: BinaryIO) -> None:
         self._reader = reader
@@ -48,7 +48,7 @@ class LspClient:
         params: object,
         timeout: float = 5,
     ) -> object:
-        """ Send a request and return its result. """
+        """Send a request and return its result."""
         number = self._next
         self._next += 1
         self._send(
@@ -62,7 +62,7 @@ class LspClient:
         return self._wait_result(number, timeout)
 
     def notify(self, method: str, params: object) -> None:
-        """ Send a notification. """
+        """Send a notification."""
         self._send({"jsonrpc": "2.0", "method": method, "params": params})
 
     def initialize(
@@ -71,17 +71,14 @@ class LspClient:
         *,
         write: bool,
         pyright: tuple[str, ...] = (),
-        pyright_server: tuple[str, ...] = (),
         timeout: float = 8,
     ) -> object:
-        """ Initialize against ``root`` and announce ``initialized``. """
+        """Initialize against ``root`` and announce ``initialized``."""
         folder = root.resolve()
         uri = folder.as_uri()
         options: dict[str, object] = {"write": write}
         if pyright:
             options["pyrightCommand"] = list(pyright)
-        if pyright_server:
-            options["pyrightServerCommand"] = list(pyright_server)
         result = self.request(
             "initialize",
             {
@@ -98,7 +95,7 @@ class LspClient:
         return result
 
     def open_markdown(self, uri: str, text: str, version: int = 1) -> None:
-        """ Send ``textDocument/didOpen`` for a Markdown buffer. """
+        """Send ``textDocument/didOpen`` for a Markdown buffer."""
         self.notify(
             "textDocument/didOpen",
             {
@@ -112,7 +109,7 @@ class LspClient:
         )
 
     def change_markdown(self, uri: str, text: str, version: int) -> None:
-        """ Send a full-document ``textDocument/didChange``. """
+        """Send a full-document ``textDocument/didChange``."""
         self.notify(
             "textDocument/didChange",
             {
@@ -122,14 +119,14 @@ class LspClient:
         )
 
     def save_markdown(self, uri: str, text: str) -> None:
-        """ Send ``textDocument/didSave`` including the buffer text. """
+        """Send ``textDocument/didSave`` including the buffer text."""
         self.notify(
             "textDocument/didSave",
             {"textDocument": {"uri": uri}, "text": text},
         )
 
     def wait_status(self, state: str, timeout: float = 4) -> dict[str, object]:
-        """ Return the next ``hydra/status`` whose state matches. """
+        """Return the next ``hydra/status`` whose state matches."""
         start = self._status_at
 
         def ready() -> dict[str, object] | None:
@@ -143,7 +140,7 @@ class LspClient:
         predicate: Callable[[list[object]], bool],
         timeout: float = 4,
     ) -> list[object]:
-        """ Return the latest diagnostics for ``uri`` once they match. """
+        """Return the latest diagnostics for ``uri`` once they match."""
 
         def ready() -> list[object] | None:
             items = self._latest_diagnostics(uri)
@@ -159,7 +156,7 @@ class LspClient:
         needle: str,
         timeout: float = 4,
     ) -> str:
-        """ Return a notification message once it contains ``needle``. """
+        """Return a notification message once it contains ``needle``."""
 
         def ready() -> str | None:
             return _message_with(self._notes, method, needle)
@@ -167,17 +164,17 @@ class LspClient:
         return self._wait(ready, timeout)
 
     def messages(self, method: str) -> list[str]:
-        """ Every notification message seen for ``method``. """
+        """Every notification message seen for ``method``."""
         with self._condition:
             return _messages(self._notes, method)
 
     def close(self) -> None:
-        """ Close the write stream so the server sees end of input. """
+        """Close the write stream so the server sees end of input."""
         with self._write_lock:
             self._writer.close()
 
     def debug(self) -> str:
-        """ A short list of notifications seen so far. """
+        """A short list of notifications seen so far."""
         with self._condition:
             return self._debug()
 
@@ -274,7 +271,7 @@ class LspClient:
 
 
 def as_dict(value: object) -> dict[str, object] | None:
-    """ Return ``value`` when it is a JSON object. """
+    """Return ``value`` when it is a JSON object."""
     if isinstance(value, dict):
         return cast(dict[str, object], value)
     return None

@@ -25,6 +25,16 @@
         "title": "Hydra: Restart Server"
       }
     ],
+    "grammars": [
+      {
+        "scopeName": "markdown.hydra.yaml",
+        "path": "./syntaxes/tangler-yaml.tmLanguage.json",
+        "injectTo": ["text.html.markdown"],
+        "embeddedLanguages": {
+          "meta.embedded.block.yaml": "yaml"
+        }
+      }
+    ],
     "configuration": {
       "title": "Hydra Tangler",
       "properties": {
@@ -47,15 +57,7 @@
             "type": "string"
           },
           "default": [],
-          "description": "Command and arguments for the basedpyright checker. Empty uses uv run --project <workspace> basedpyright --outputjson."
-        },
-        "hydra.pyrightServerCommand": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "default": [],
-          "description": "Command and arguments for the basedpyright language server. Empty uses uv run --project <workspace> basedpyright-langserver --stdio."
+          "description": "Command and arguments for the basedpyright language server. Empty uses the basedpyright shipped with Hydra. Hover and diagnostics share this process."
         },
         "hydra.ruffCommand": {
           "type": "array",

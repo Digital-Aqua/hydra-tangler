@@ -57,11 +57,13 @@ model.py             plain dataclasses shared by all layers
 - Fence handlers and outputs are discovered through entry points in
   the groups `hydra_tangler.fences` and `hydra_tangler.outputs`, with
   built-ins registered the same way, so external packages can add more.
-- Hydra never reads `pyproject.toml` or any config file. Source is the
-  CLI argument or `./`; hidden directories, `_build`, `node_modules`
-  and `__pycache__` are skipped. The target is one directory, default
-  `./_build`, shared by every output. `--output` (repeatable) selects
-  outputs.
+- Source is the CLI argument or `./`; hidden directories, `_build`,
+  `node_modules` and `__pycache__` are skipped. The target is one
+  directory, default `./_build`, shared by every output. `--output`
+  (repeatable) selects outputs. Hydra does not read project config to
+  discover that source. `check` does read the book's ruff and
+  basedpyright config, so the defaults in `check/defaults.py` can sit
+  underneath it.
 - Each output has a `mount`: `files` is `.`, `htmldocs` is `docs`. The
   pipeline applies mounts, merges all outputs into one FileSet and one
   manifest, and writes `sourcemap.json` beside them. Two outputs
@@ -73,14 +75,21 @@ model.py             plain dataclasses shared by all layers
   A subclass may set `exclusions`: a checker name plus that checker's
   rule codes that tangled fragments are not expected to satisfy. The
   lint pass for the language asks the checker to suppress them.
-  Python drops ruff `I001` (import sorting). Add the next rule on the
-  language class; teach a new checker how to spell the flag in
-  `suppress`.
+  Add the next fragment rule on the language class; teach a new
+  checker how to spell the flag in `suppress`.
+  Defaults that apply to a whole book, and that the book may override,
+  live in `check/defaults.py`: ruff ignores import sorting (`I001`)
+  and unused noqa (`RUF100`); basedpyright sets
+  `reportUnnecessaryTypeIgnoreComment` to `none`. Ruff files extend
+  those defaults, so `extend-select` of one code turns that rule back
+  on and `select` replaces the rule set. A basedpyright value in the
+  book replaces that one key.
   Only `file=` fences are tangled. Per-fence attributes: `file`,
   `comment`, `comment_end`, `header=false`, `tangler=<tag>`. A
   `file=` fence with an unknown tag is an `unsupported-language`
   warning and is skipped. The `files` output has no language
-  knowledge.
+  knowledge. YAML fences that share a path are deep-merged before
+  aliases are resolved; other tanglers still concatenate.
 - Output paths stay inside the target: `vet_output_path` in `model.py`
   is the one rule, enforced by fences, `OutputFile`, mounts and the
   writer (which also refuses symlink escapes).
@@ -88,6 +97,14 @@ model.py             plain dataclasses shared by all layers
   output, unreadable files and refused writes are exceptions listed in
   `failures.USER_FAILURES`; the CLI prints `error:` and exits 1, the
   server shows a message and keeps running.
+- basedpyright is one language server, the binary shipped with Hydra.
+  `hydra check` and `hydra serve` both talk to it. Its workspace root
+  is the book. When `<book>/.venv/bin/python` exists, that is the
+  interpreter. Hover and
+  diagnostics are that process's results, mapped through the source
+  map with columns. Ruff stays a separate `uv run` checker. A
+  basedpyright that exits, or that publishes nothing for a tangled
+  file, is a `LintError`, not a clean pass.
 - The heading slug function lives in one place and is used by both
   link checking and htmldocs.
 - Link checking: relative links to a missing file, or to a missing

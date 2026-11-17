@@ -2,7 +2,7 @@
 
 VS Code client for the Hydra Tangler language server. The extension starts `hydra serve` over stdio and shows its status. Tangling, checks, diagnostics, hover, definition, and completion all live in `hydra serve`.
 
-The extension activates when the workspace contains a `hydra.yaml` file. That file is a marker; it is not read. The book is the directory that holds it, and the client attaches to Markdown files under that directory. Saving a Markdown file tangles outputs only when `hydra.write` is on.
+The extension activates when the workspace contains a `hydra.yaml` file. That file is a marker; it is not read. The book is the directory that holds it, and the client attaches to Markdown files under that directory. Saving a Markdown file tangles outputs only when `hydra.write` is on. A top-level fence with `tangler=yaml` or `tangler=yml` is highlighted as YAML.
 
 ## Build
 
@@ -27,9 +27,8 @@ In VS Code, run **Extensions: Install from VSIX…** and choose that file. `uv` 
 | --- | --- | --- |
 | `hydra.serverCommand` | `[]` | Command and arguments that start the server. Empty uses `uv run --project <hydra package> hydra serve`. A development install uses the package beside `ide-extension`; a packaged install uses the book directory. The working directory is the book directory. |
 | `hydra.write` | `false` | When true, a save tangles into the build directory. |
-| `hydra.pyrightCommand` | `[]` | Command and arguments for the basedpyright checker, sent as `pyrightCommand`. Empty uses `uv run --project <workspace> basedpyright --outputjson`. |
-| `hydra.pyrightServerCommand` | `[]` | Command and arguments for the basedpyright language server, sent as `pyrightServerCommand`. Empty uses `uv run --project <workspace> basedpyright-langserver --stdio`. |
+| `hydra.pyrightCommand` | `[]` | Command and arguments for the basedpyright language server, sent as `pyrightCommand`. Empty uses the basedpyright shipped with Hydra. Hover and diagnostics share it. |
 | `hydra.ruffCommand` | `[]` | Command and arguments for the ruff checker, sent as `ruffCommand`. Empty uses `uv run --project <workspace> ruff check --output-format json`. |
 | `hydra.trace.server` | `off` | Trace traffic with the language server: `off`, `messages`, or `verbose`. |
 
-A command that is present but not a list of non-empty strings is rejected; the server keeps that command's default and reports `bad-checker-command`. Changing `hydra.serverCommand`, `hydra.write`, `hydra.pyrightCommand`, `hydra.pyrightServerCommand`, or `hydra.ruffCommand` restarts the server. **Hydra: Rebuild** asks the running server to rebuild now. **Hydra: Restart Server** starts it again. The status bar shows `Hydra` while idle with no diagnostics, `Hydra: N errors, M warnings` when there are diagnostics, and a spinner while a rebuild is in progress. Click the status item to rebuild.
+A command that is present but not a list of non-empty strings is rejected; the server keeps that command's default and reports `bad-checker-command`. Changing `hydra.serverCommand`, `hydra.write`, `hydra.pyrightCommand`, or `hydra.ruffCommand` restarts the server. **Hydra: Rebuild** asks the running server to rebuild now. **Hydra: Restart Server** starts it again. The status bar shows `Hydra` while idle with no diagnostics, `Hydra: N errors, M warnings` when there are diagnostics, and a spinner while a rebuild is in progress. Click the status item to rebuild.
